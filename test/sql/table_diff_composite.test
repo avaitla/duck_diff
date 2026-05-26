@@ -1,6 +1,6 @@
 # name: test/sql/table_diff_composite.test
 # description: composite primary key (pk + additional_pk) and join-back
-# group: [duck_diff]
+# group: [sql]
 
 require duck_diff
 

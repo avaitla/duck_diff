@@ -1,10 +1,9 @@
 # name: test/sql/table_diff.test
 # description: table_diff core behavior (single key, strict default)
-# group: [duck_diff]
-#
-# Output schema: key column(s) under their ORIGINAL names, then diff_status,
-# then diff_data (JSON). Meta columns default to the 'diff_' prefix to avoid
-# colliding with real columns.
+# group: [sql]
+
+# Output schema: key column(s) under their original names, then diff_status,
+# then diff_data (JSON); meta columns default to the 'diff_' prefix.
 
 # Before the extension is loaded, the function does not exist.
 statement error

@@ -1,6 +1,6 @@
 # name: test/sql/table_diff_errors.test
 # description: v1 error cases (required pk, missing key, duplicate keys)
-# group: [duck_diff]
+# group: [sql]
 
 require duck_diff
 

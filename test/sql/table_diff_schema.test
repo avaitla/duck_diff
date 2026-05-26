@@ -1,7 +1,6 @@
 # name: test/sql/table_diff_schema.test
-# description: schema reconciliation (compare strict/intersect, columns, ignore,
-#              type mismatch) and prefix/collision handling
-# group: [duck_diff]
+# description: schema reconciliation (compare strict/intersect, columns, ignore, type mismatch, prefix/collision)
+# group: [sql]
 
 require duck_diff
 

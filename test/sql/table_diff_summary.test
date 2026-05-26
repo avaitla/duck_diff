@@ -1,6 +1,6 @@
 # name: test/sql/table_diff_summary.test
 # description: table_diff_summary counts and tables_equal
-# group: [duck_diff]
+# group: [sql]
 
 require duck_diff
 

@@ -1,8 +1,6 @@
 # name: test/sql/table_diff_context.test
-# description: context columns -- a single 'context' argument pulls the named
-#              columns from BOTH sides into left_context / right_context output
-#              columns (NULL where that side's row is absent)
-# group: [duck_diff]
+# description: context columns -- single 'context' arg pulls named columns from both sides into left_context/right_context
+# group: [sql]
 
 require duck_diff
 

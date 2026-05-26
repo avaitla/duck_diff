@@ -115,7 +115,7 @@ RelationSchema InspectRelation(ClientContext &context, optional_ptr<Binder> pare
 struct DiffPlan {
 	string left;
 	string right;
-	vector<string> key_cols;            // canonical (left) names, in order
+	vector<string> key_cols;     // canonical (left) names, in order
 	vector<string> value_cols;   // compared non-key columns, in order
 	vector<string> context_cols; // pulled from both sides into left_context / right_context
 	bool has_context = false;
@@ -352,18 +352,18 @@ string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string
 			          ", json_object('left', l." + q + ", 'right', r." + q + ")) ELSE CAST('{}' AS JSON) END";
 		}
 		// seed with an empty object so json_merge_patch always has >= 2 args
-		diff_expr = "CASE WHEN l.__p AND r.__p AND NOT (" + all_eq +
-		            ") THEN json_merge_patch(CAST('{}' AS JSON), " + merges + ") END";
+		diff_expr = "CASE WHEN l.__p AND r.__p AND NOT (" + all_eq + ") THEN json_merge_patch(CAST('{}' AS JSON), " +
+		            merges + ") END";
 	}
 
 	// context columns (only present when requested): JSON object or NULL on the
 	// side that does not exist for this row
 	string context_select;
 	if (plan.has_context) {
-		context_select += ", CASE WHEN l.__p THEN " + ContextObject("l", plan.context_cols) +
-		                  " END AS \"left_context\"";
-		context_select += ", CASE WHEN r.__p THEN " + ContextObject("r", plan.context_cols) +
-		                  " END AS \"right_context\"";
+		context_select +=
+		    ", CASE WHEN l.__p THEN " + ContextObject("l", plan.context_cols) + " END AS \"left_context\"";
+		context_select +=
+		    ", CASE WHEN r.__p THEN " + ContextObject("r", plan.context_cols) + " END AS \"right_context\"";
 	}
 
 	string dup_cond = "EXISTS (SELECT 1 FROM __l GROUP BY " + key_list + " HAVING count(*) > 1) OR " +
