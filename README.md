@@ -1,32 +1,30 @@
 # duck_diff
 
-A focused DuckDB extension for diffing two relations on a single-column primary
-key. Given a "left" and a "right" relation, it reports — per key — whether the
-row **matched**, **differs**, or exists only on one side, and (for differing
-rows) exactly which columns changed.
+A focused DuckDB extension for diffing two relations on a primary key. Given a
+"left" and a "right" relation, it reports — per key — whether the row
+**matched**, **differs**, or exists only on one side, and (for differing rows)
+exactly which columns changed.
 
 ```sql
 LOAD duck_diff;
 
-FROM table_diff(TABLE orders_before, TABLE orders_after, key := 'order_id');
+FROM table_diff('orders_before', 'orders_after', pk := 'order_id');
 ```
 
-| pk_id | status     | diff |
-|-------|------------|------|
-| 1     | matched    | NULL |
-| 3     | left_only  | NULL |
-| 5     | differs    | `{"amount":{"left":10,"right":12},"status":{"left":"open","right":"paid"}}` |
-| 7     | right_only | NULL |
+| order_id | diff_status | diff_data |
+|----------|-------------|-----------|
+| 1 | matched | NULL |
+| 3 | left_only | NULL |
+| 5 | differs | `{"amount":{"left":10,"right":12}}` |
+| 7 | right_only | NULL |
 
-Inputs are **relations**, so anything that produces rows works — tables, views,
-CTEs, subqueries, or `read_csv` / `read_parquet`:
+The two relations are passed as **strings** — anything valid after `FROM`: a
+table/view name, a table function, or a parenthesized subquery. So named tables,
+CSV/Parquet, and ad-hoc queries all work:
 
 ```sql
-FROM table_diff(
-    (SELECT * FROM read_csv('before.csv')),
-    (SELECT * FROM read_csv('after.csv')),
-    key := 'id'
-);
+FROM table_diff('read_csv(''before.csv'')', 'read_csv(''after.csv'')', pk := 'id');
+FROM table_diff('(SELECT * FROM orders WHERE region = ''US'')', 'orders_v2', pk := 'id');
 ```
 
 ## Functions
@@ -35,38 +33,41 @@ See [docs/functions.md](docs/functions.md) for the full reference.
 
 | Function | Returns | Purpose |
 |----------|---------|---------|
-| `table_diff(left, right, key := 'id')` | table | one row per key: `pk_id`, `status`, `diff` |
-| `table_diff_summary(left, right, key := 'id')` | one row | counts per status |
-| `tables_equal(left, right, key := 'id')` | `BOOLEAN` | true iff every key matched |
+| `table_diff(left, right, pk := …)` | table | one row per key: key column(s), `diff_status`, `diff_data` |
+| `table_diff_summary(left, right, pk := …)` | one row | counts per status |
+| `tables_equal(left, right, pk := …)` | BOOLEAN | true iff every key matched |
 
-## Semantics
+## Key features
 
-- **Primary key**: a single column (composite keys are not yet supported).
-- **Status** is one of `matched`, `differs`, `left_only`, `right_only`.
-- **NULL-safe comparison**: values are compared with `IS NOT DISTINCT FROM`, so
-  `NULL` equals `NULL` (counts as matched).
-- **`diff`** is a `JSON` value populated only for `differs` rows. It contains
-  only the columns whose values differ, as `{"col": {"left": …, "right": …}}`,
-  preserving each column's native type.
-
-### Errors (v1 is strict)
-
-- The two relations must have the **same set of columns**, otherwise an error is
-  raised.
-- The `key` must be **unique** on both sides; duplicate keys raise an error.
+- **Keys**: `pk := 'id'` (single) or `pk := 'region', additional_pk := ['id']`
+  (composite). Key columns are emitted under their **original names**, so you can
+  join the diff back to the source: `... JOIN orders USING (region, id)`.
+- **Status**: `matched`, `differs`, `left_only`, `right_only`. NULL-safe
+  comparison (`IS NOT DISTINCT FROM`, so `NULL` equals `NULL`).
+- **`diff_data`** (JSON): for `differs` rows, only the columns that changed, as
+  `{"col": {"left": …, "right": …}}`, with native types preserved.
+- **Schema policy**: `compare := 'strict'` (default — relations must match) or
+  `'intersect'` (compare only common, same-typed columns). Refine with
+  `columns := [...]` / `ignore := [...]`.
+- **Context**: `context := ['name']` pulls those columns from both sides into
+  `left_context` / `right_context` JSON columns — handy for understanding why a
+  row is `left_only`/`right_only`.
+- **Collisions**: meta columns default to a `diff_` prefix; override with
+  `prefix := 'cmp_'` if a key column would clash.
 
 ## Building
 
 ```sh
-make            # build extension + a duckdb with it loaded
-make test       # run the SQL test suite in test/sql/
+GEN=ninja make    # build extension + a duckdb with it loaded (first build is slow)
+build/release/test/unittest "test/sql/*"   # run the SQL test suite
 ```
 
-The extension generates SQL that uses `json_object` / `json_merge_patch`, so the
+The extension generates SQL using `json_object` / `json_merge_patch`, so the
 bundled `json` extension is required (built in automatically for tests).
 
 ## Status
 
-v1 is single-key, strict-schema. Planned: composite keys, a tolerant-schema
-mode (diff shared columns, report added/dropped columns), and output-shaping
-flags. See [docs/DESIGN.md](docs/DESIGN.md).
+Single relation argument per DuckDB's table-function limit drives the
+string-argument design (same pattern as the built-in `query()` /
+`query_table()`). See [docs/DESIGN.md](docs/DESIGN.md) for the full design and
+rationale.

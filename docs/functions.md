@@ -1,130 +1,133 @@
 # duck_diff function reference
 
-All functions take two **relations** (`left`, `right`) and a single-column
-primary key passed as the named parameter `key`.
+`table_diff` and `table_diff_summary` are table functions; `tables_equal` is a
+scalar. The two relations are passed as **strings** — anything valid after
+`FROM`: a table/view name, a table function (`read_csv(...)`), or a
+parenthesized subquery.
 
 ---
 
 ## `table_diff`
 
-Diffs `left` against `right` on `key`, emitting one row per distinct key value.
+Diffs `left` against `right` on a primary key, one output row per distinct key.
 
 ### Signature
 
 ```sql
-table_diff(left, right, key := VARCHAR) -> TABLE
+table_diff(left, right,
+           pk := 'id',                  -- required: string or list of column names
+           additional_pk := [...],      -- extra key columns (composite key)
+           compare := 'strict',          -- 'strict' (default) | 'intersect'
+           columns := [...],             -- only compare these non-key columns
+           ignore := [...],              -- exclude these columns from comparison
+           prefix := 'diff_',            -- prefix for the meta output columns
+           context := [...])             -- pull these columns from both sides
+        -> TABLE
 ```
 
 ### Parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `left` | relation | The "before" / left-hand relation. |
-| `right` | relation | The "after" / right-hand relation. |
-| `key` | `VARCHAR` (named) | Name of the single primary-key column. Must exist in both relations and be unique on each side. |
+| `left`, `right` | VARCHAR | Relation expressions (table name, table function, or `(subquery)`). |
+| `pk` | VARCHAR or LIST | **Required.** Primary key column(s). A string for a single key or a list. |
+| `additional_pk` | LIST | Extra key columns appended to `pk` for a composite key. |
+| `compare` | VARCHAR | `'strict'` (default): the relations must have identical column names and types. `'intersect'`: compare only columns present in both with matching types. |
+| `columns` | LIST | Restrict the compared (non-key) columns to this list. |
+| `ignore` | LIST | Exclude these columns from comparison. |
+| `prefix` | VARCHAR | Prefix for the meta output columns (default `'diff_'`). |
+| `context` | LIST | Columns pulled from **both** sides into `left_context` / `right_context`. |
 
-### Result columns
+### Output columns
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `pk_id` | type of `key` | The key value (`COALESCE(left.key, right.key)`). |
-| `status` | `VARCHAR` | `matched`, `differs`, `left_only`, or `right_only`. |
-| `diff` | `JSON` | For `differs` rows, an object of the differing columns: `{"col": {"left": …, "right": …}}`. `NULL` for all other statuses. |
+| *key columns* | original types | The key column(s), under their **original names** (so you can join back with `USING`). |
+| `<prefix>status` | VARCHAR | `matched` / `differs` / `left_only` / `right_only`. Default name `diff_status`. |
+| `<prefix>data` | JSON | For `differs` rows, an object of the differing columns: `{"col": {"left": …, "right": …}}`. NULL otherwise. Default name `diff_data`. |
+| `left_context` | JSON | Present only when `context` is set: the `context` columns from the left row, or NULL if the left row is absent. |
+| `right_context` | JSON | As above, from the right row. |
 
 ### Status meaning
 
 | Status | Meaning |
 |--------|---------|
-| `matched` | Key present on both sides; all non-key columns equal (`IS NOT DISTINCT FROM`). |
-| `differs` | Key present on both sides; at least one non-key column differs. |
+| `matched` | Key on both sides, all compared columns equal (`IS NOT DISTINCT FROM`). |
+| `differs` | Key on both sides, at least one compared column differs. |
 | `left_only` | Key present only in `left`. |
 | `right_only` | Key present only in `right`. |
 
 ### Examples
 
 ```sql
--- All changes between two tables
-FROM table_diff(TABLE users_v1, TABLE users_v2, key := 'id');
+-- Single key
+FROM table_diff('users_v1', 'users_v2', pk := 'id');
 
--- Only the rows that changed
-SELECT pk_id, diff
-FROM table_diff(TABLE users_v1, TABLE users_v2, key := 'id')
-WHERE status = 'differs';
+-- CSV / parquet / any table function
+FROM table_diff('read_csv(''before.csv'')', 'read_csv(''after.csv'')', pk := 'id');
 
--- Which keys were added on the right
-SELECT pk_id
-FROM table_diff(TABLE users_v1, TABLE users_v2, key := 'id')
-WHERE status = 'right_only';
+-- Composite key; join the result back to the source with USING
+SELECT d.*, o.name
+FROM table_diff('orders', 'orders_v2', pk := 'region', additional_pk := ['id']) d
+JOIN orders o USING (region, id);
 
--- Pull a specific changed value out of the JSON diff
-SELECT pk_id,
-       diff -> 'email' ->> 'left'  AS old_email,
-       diff -> 'email' ->> 'right' AS new_email
-FROM table_diff(TABLE users_v1, TABLE users_v2, key := 'id')
-WHERE diff -> 'email' IS NOT NULL;
+-- Only the rows that changed, and what changed
+SELECT id, diff_data
+FROM table_diff('users_v1', 'users_v2', pk := 'id')
+WHERE diff_status = 'differs';
+
+-- Tolerant schema: compare only common, same-typed columns
+FROM table_diff('a', 'b', pk := 'id', compare := 'intersect');
+
+-- Ignore a column from comparison but keep it visible for context
+FROM table_diff('a', 'b', pk := 'id', ignore := ['updated_at'], context := ['name']);
 ```
 
 ### Errors
 
-- **Schema mismatch** — `left` and `right` do not have the same set of columns.
-- **Missing key** — `key` is not a column of both relations.
-- **Duplicate keys** — `key` is not unique within `left` or within `right`.
+- **Missing `pk`** — the `pk` parameter is required.
+- **Missing key** — a key column is not present in both relations.
+- **Schema mismatch (strict)** — differing column sets, or a compared column whose type differs.
+- **Duplicate keys** — the key is not unique within `left` or within `right`.
+- **Name collision** — a key column collides with a meta output column; set `prefix`.
 
 ---
 
 ## `table_diff_summary`
 
-Returns a single row of counts, one per status. Useful for dashboards and quick
-"how different are these?" checks without materializing every row.
+Counts per status, one row. Same parameters as `table_diff`.
 
-### Signature
-
-```sql
-table_diff_summary(left, right, key := VARCHAR) -> TABLE
-```
-
-### Result columns
+### Output columns
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `n_matched` | `BIGINT` | Keys present on both sides with all values equal. |
-| `n_differs` | `BIGINT` | Keys present on both sides with at least one differing value. |
-| `n_left_only` | `BIGINT` | Keys present only in `left`. |
-| `n_right_only` | `BIGINT` | Keys present only in `right`. |
-
-### Example
+| `n_matched` | BIGINT | Keys on both sides, all values equal. |
+| `n_differs` | BIGINT | Keys on both sides, at least one value differs. |
+| `n_left_only` | BIGINT | Keys only in `left`. |
+| `n_right_only` | BIGINT | Keys only in `right`. |
 
 ```sql
-SELECT * FROM table_diff_summary(TABLE snap_a, TABLE snap_b, key := 'id');
+SELECT * FROM table_diff_summary('snap_a', 'snap_b', pk := 'id');
 -- n_matched | n_differs | n_left_only | n_right_only
--- ----------+-----------+-------------+-------------
---        2  |        1  |          1  |           1
+--    2       |    1      |      1      |      1
 ```
 
 ---
 
 ## `tables_equal`
 
-A scalar convenience for tests and CI: returns `true` when the two relations are
-identical under the diff semantics (every key `matched`), `false` otherwise.
+Scalar convenience: `true` when every key matched, `false` otherwise.
 
 ### Signature
 
 ```sql
-tables_equal(left, right, key := VARCHAR) -> BOOLEAN
+tables_equal(left, right, pk := 'id', additional_pk := [...],
+             compare := 'strict', columns := [...], ignore := [...])
+        -> BOOLEAN
 ```
-
-### Example
 
 ```sql
--- Fail a test if a transformation changed the data unexpectedly
-SELECT tables_equal(TABLE expected, TABLE actual, key := 'id');  -- true / false
+SELECT tables_equal('expected', 'actual', pk := 'id');  -- true / false
 ```
 
-Equivalent to:
-
-```sql
-SELECT count(*) = 0
-FROM table_diff(left, right, key := 'id')
-WHERE status <> 'matched';
-```
+Equivalent to `SELECT count(*) = 0 FROM table_diff(...) WHERE diff_status <> 'matched'`.
