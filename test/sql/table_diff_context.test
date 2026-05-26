@@ -1,6 +1,7 @@
 # name: test/sql/table_diff_context.test
-# description: left_context / right_context columns (pull values from each side
-#              for additional context, separate from diff_data)
+# description: context columns -- a single 'context' argument pulls the named
+#              columns from BOTH sides into left_context / right_context output
+#              columns (NULL where that side's row is absent)
 # group: [duck_diff]
 
 require duck_diff
@@ -26,56 +27,38 @@ INSERT INTO cxr VALUES
     (7, 70, 'New');    -- right_only
 
 # ----------------------------------------------------------------------------
-# left_context / right_context are their own output columns (JSON), pulled from
-# each side. 'name' is excluded from comparison via ignore so it only shows up
-# as context, not in diff_data. Absent side -> NULL.
+# context := ['name'] -> left_context / right_context columns, pulled from each
+# side. 'name' is excluded from comparison via ignore so it only shows up as
+# context. The absent side of a one-sided row is NULL.
 # ----------------------------------------------------------------------------
-query ITTT
-SELECT id, diff_status, left_context, right_context
-FROM table_diff('cxl', 'cxr', pk := 'id',
-                ignore := ['name'],
-                left_context := ['name'],
-                right_context := ['name'])
+query ITT
+SELECT id, left_context, right_context
+FROM table_diff('cxl', 'cxr', pk := 'id', ignore := ['name'], context := ['name'])
 ORDER BY id;
 ----
-1	matched	{"name":"Acme"}	{"name":"Acme"}
-3	left_only	{"name":"Gone"}	NULL
-5	differs	{"name":"Eve"}	{"name":"Eva"}
-7	right_only	NULL	{"name":"New"}
+1	{"name":"Acme"}	{"name":"Acme"}
+3	{"name":"Gone"}	NULL
+5	{"name":"Eve"}	{"name":"Eva"}
+7	NULL	{"name":"New"}
 
 # diff_data still reflects only the compared, differing columns (amount)
 query T
 SELECT json_keys(diff_data)
-FROM table_diff('cxl', 'cxr', pk := 'id',
-                ignore := ['name'],
-                left_context := ['name'],
-                right_context := ['name'])
+FROM table_diff('cxl', 'cxr', pk := 'id', ignore := ['name'], context := ['name'])
 WHERE id = 5;
 ----
 [amount]
 
-# context columns are independent: only the requested side appears
-query IT
-SELECT id, left_context
-FROM table_diff('cxl', 'cxr', pk := 'id', ignore := ['name'], left_context := ['name'])
-ORDER BY id;
-----
-1	{"name":"Acme"}
-3	{"name":"Gone"}
-5	{"name":"Eve"}
-7	NULL
-
-# right_context only -> left_context column is not produced (selecting it errors)
-statement error
-SELECT left_context
-FROM table_diff('cxl', 'cxr', pk := 'id', ignore := ['name'], right_context := ['name']);
-----
-left_context
-
 # multiple context columns are bundled into one JSON object per side
 query T
 SELECT left_context
-FROM table_diff('cxl', 'cxr', pk := 'id', columns := ['amount'], left_context := ['amount', 'name'])
+FROM table_diff('cxl', 'cxr', pk := 'id', columns := ['amount'], context := ['amount', 'name'])
 WHERE id = 5;
 ----
 {"amount":50,"name":"Eve"}
+
+# without the context argument, the context columns are not produced
+statement error
+SELECT left_context FROM table_diff('cxl', 'cxr', pk := 'id');
+----
+left_context

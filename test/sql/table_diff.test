@@ -91,7 +91,7 @@ query TT
 SELECT diff_data->'number'->>'left', diff_data->'number'->>'right'
 FROM table_diff('l', 'r', pk := 'id') WHERE id = 5;
 ----
-10	99
+50	99
 
 query TT
 SELECT diff_data->'email'->>'left', diff_data->'email'->>'right'
