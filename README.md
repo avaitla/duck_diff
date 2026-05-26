@@ -34,6 +34,9 @@ FROM table_diff('(SELECT * FROM orders WHERE region = ''US'')', 'orders_v2', pk 
 - **Capturing what changed** between snapshots or points in time.
 - **Replication integrity** — spot-check that a replica matches its source, in
   the spirit of `pt-table-checksum`.
+- **Safe AI-assisted changes** — give a coding agent like Claude a ground-truth
+  check that a refactor or data-modeling change produced identical results, so
+  it can iterate on transformations safely instead of guessing.
 
 ## Functions
 
