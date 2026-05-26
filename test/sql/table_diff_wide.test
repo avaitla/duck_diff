@@ -1,0 +1,72 @@
+# name: test/sql/table_diff_wide.test
+# description: wide mode -- compared columns expand to <c>_left/<c>_right/<c>_diff and context to <c>_left/<c>_right
+# group: [sql]
+
+require duck_diff
+
+require json
+
+statement ok
+CREATE TABLE wl (id INTEGER, a INTEGER, name VARCHAR);
+
+statement ok
+CREATE TABLE wr (id INTEGER, a INTEGER, name VARCHAR);
+
+statement ok
+INSERT INTO wl VALUES
+    (1, 10, 'x'),   -- differs (a)
+    (2, 20, 'y'),   -- matched
+    (3, 30, 'z');   -- left_only
+
+statement ok
+INSERT INTO wr VALUES
+    (1, 99, 'x'),   -- differs
+    (2, 20, 'Y'),   -- matched (name ignored)
+    (4, 40, 'w');   -- right_only
+
+# ----------------------------------------------------------------------------
+# wide := true expands the compared column 'a' into a_left / a_right / a_diff,
+# and the context column 'name' into name_left / name_right. a_diff is the same
+# IS DISTINCT FROM comparison the row status uses (true on one-sided rows).
+# ----------------------------------------------------------------------------
+query ITIITTT
+SELECT id, diff_status, a_left, a_right, a_diff, name_left, name_right
+FROM table_diff('wl', 'wr', pk := 'id', ignore := ['name'], context := ['name'], wide := true)
+ORDER BY id;
+----
+1	differs	10	99	true	x	x
+2	matched	20	20	false	y	Y
+3	left_only	30	NULL	true	z	NULL
+4	right_only	NULL	40	true	NULL	w
+
+# native types are preserved as real columns (a_left is INTEGER, not text)
+query T
+SELECT typeof(a_left) FROM table_diff('wl', 'wr', pk := 'id', ignore := ['name'], wide := true) LIMIT 1;
+----
+INTEGER
+
+# wide mode produces no diff_data column
+statement error
+SELECT diff_data FROM table_diff('wl', 'wr', pk := 'id', wide := true);
+----
+diff_data
+
+# and no left_context/right_context columns (those are JSON-mode only)
+statement error
+SELECT left_context FROM table_diff('wl', 'wr', pk := 'id', context := ['name'], wide := true);
+----
+left_context
+
+# ----------------------------------------------------------------------------
+# context := ['*'] pulls every non-key column not already compared (here 'name',
+# which is ignored from the diff) -> full side-by-side for dashboards
+# ----------------------------------------------------------------------------
+query ITIITTT
+SELECT id, diff_status, a_left, a_right, a_diff, name_left, name_right
+FROM table_diff('wl', 'wr', pk := 'id', ignore := ['name'], context := ['*'], wide := true)
+ORDER BY id;
+----
+1	differs	10	99	true	x	x
+2	matched	20	20	false	y	Y
+3	left_only	30	NULL	true	z	NULL
+4	right_only	NULL	40	true	NULL	w

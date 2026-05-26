@@ -1,0 +1,59 @@
+# name: test/sql/table_diff_summary.test
+# description: table_diff_summary counts and tables_equal
+# group: [sql]
+
+require duck_diff
+
+require json
+
+statement ok
+CREATE TABLE l (id INTEGER, v INTEGER);
+
+statement ok
+CREATE TABLE r (id INTEGER, v INTEGER);
+
+statement ok
+INSERT INTO l VALUES (1, 1), (2, 2), (3, 3), (5, 5);
+
+statement ok
+INSERT INTO r VALUES (1, 1), (2, 99), (4, 4), (5, 5);
+
+# ----------------------------------------------------------------------------
+# table_diff_summary: one row of counts per status
+#   matched: keys 1,5   -> 2
+#   differs: key 2      -> 1
+#   left_only: key 3    -> 1
+#   right_only: key 4   -> 1
+# ----------------------------------------------------------------------------
+query IIII
+SELECT n_matched, n_differs, n_left_only, n_right_only
+FROM table_diff_summary('l', 'r', pk := 'id');
+----
+2	1	1	1
+
+# total and percentages (of 5 total rows)
+query IRRRR
+SELECT n_total, pct_matched, pct_differs, pct_left_only, pct_right_only
+FROM table_diff_summary('l', 'r', pk := 'id');
+----
+5	40.0	20.0	20.0	20.0
+
+# ----------------------------------------------------------------------------
+# tables_equal: false when anything differs/added/removed
+# ----------------------------------------------------------------------------
+query T
+SELECT tables_equal('l', 'r', pk := 'id');
+----
+false
+
+# true when every key matches
+statement ok
+CREATE TABLE r2 (id INTEGER, v INTEGER);
+
+statement ok
+INSERT INTO r2 VALUES (1, 1), (2, 2), (3, 3), (5, 5);
+
+query T
+SELECT tables_equal('l', 'r2', pk := 'id');
+----
+true

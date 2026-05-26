@@ -1,0 +1,132 @@
+# name: test/sql/table_diff_schema.test
+# description: schema reconciliation (compare strict/intersect, columns, ignore, type mismatch, prefix/collision)
+# group: [sql]
+
+require duck_diff
+
+require json
+
+# ----------------------------------------------------------------------------
+# Different column sets: only_l vs only_r
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE sl (id INTEGER, a INTEGER, only_l INTEGER);
+
+statement ok
+CREATE TABLE sr (id INTEGER, a INTEGER, only_r INTEGER);
+
+statement ok
+INSERT INTO sl VALUES (1, 100, 7), (2, 200, 8);
+
+statement ok
+INSERT INTO sr VALUES (1, 100, 9), (2, 999, 9);
+
+# strict (default): differing column sets -> hard error
+statement error
+SELECT * FROM table_diff('sl', 'sr', pk := 'id');
+----
+column
+
+# intersect: compare only common columns (a); only_l/only_r dropped
+query IT
+SELECT id, diff_status FROM table_diff('sl', 'sr', pk := 'id', compare := 'intersect')
+ORDER BY id;
+----
+1	matched
+2	differs
+
+query T
+SELECT json_keys(diff_data) FROM table_diff('sl', 'sr', pk := 'id', compare := 'intersect')
+WHERE id = 2;
+----
+[a]
+
+# ----------------------------------------------------------------------------
+# Same column names, different type: val INTEGER vs VARCHAR
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE tl (id INTEGER, val INTEGER);
+
+statement ok
+CREATE TABLE tr (id INTEGER, val VARCHAR);
+
+statement ok
+INSERT INTO tl VALUES (1, 10), (2, 20);
+
+statement ok
+INSERT INTO tr VALUES (1, 'a'), (2, 'b');
+
+# strict: type mismatch -> hard error
+statement error
+SELECT * FROM table_diff('tl', 'tr', pk := 'id');
+----
+type
+
+# intersect: type-mismatched column excluded -> nothing left to compare
+query IT
+SELECT id, diff_status FROM table_diff('tl', 'tr', pk := 'id', compare := 'intersect')
+ORDER BY id;
+----
+1	matched
+2	matched
+
+# ----------------------------------------------------------------------------
+# columns / ignore (identical schemas, so strict is fine)
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE cm_l (id INTEGER, x INTEGER, y INTEGER);
+
+statement ok
+CREATE TABLE cm_r (id INTEGER, x INTEGER, y INTEGER);
+
+statement ok
+INSERT INTO cm_l VALUES (1, 1, 1), (2, 2, 2);
+
+statement ok
+INSERT INTO cm_r VALUES (1, 9, 1), (2, 2, 9);
+
+# columns := ['x'] -> compare only x (y ignored)
+query IT
+SELECT id, diff_status FROM table_diff('cm_l', 'cm_r', pk := 'id', columns := ['x'])
+ORDER BY id;
+----
+1	differs
+2	matched
+
+# ignore := ['x'] -> compare everything except x (i.e. y)
+query IT
+SELECT id, diff_status FROM table_diff('cm_l', 'cm_r', pk := 'id', ignore := ['x'])
+ORDER BY id;
+----
+1	matched
+2	differs
+
+# ----------------------------------------------------------------------------
+# Collision: a key column named 'diff_status' clashes with the meta column
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE coll_l (diff_status INTEGER, v INTEGER);
+
+statement ok
+CREATE TABLE coll_r (diff_status INTEGER, v INTEGER);
+
+statement ok
+INSERT INTO coll_l VALUES (1, 10), (2, 20);
+
+statement ok
+INSERT INTO coll_r VALUES (1, 10), (2, 99);
+
+# without a custom prefix the output column names collide -> error mentioning prefix
+statement error
+SELECT * FROM table_diff('coll_l', 'coll_r', pk := 'diff_status');
+----
+prefix
+
+# custom prefix moves the meta columns out of the way (x_status / x_data)
+query IT
+SELECT diff_status, x_status
+FROM table_diff('coll_l', 'coll_r', pk := 'diff_status', prefix := 'x_')
+ORDER BY diff_status;
+----
+1	matched
+2	differs

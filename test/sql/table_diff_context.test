@@ -1,0 +1,95 @@
+# name: test/sql/table_diff_context.test
+# description: context columns -- single 'context' arg pulls named columns from both sides into left_context/right_context
+# group: [sql]
+
+require duck_diff
+
+require json
+
+statement ok
+CREATE TABLE cxl (id INTEGER, amount INTEGER, name VARCHAR);
+
+statement ok
+CREATE TABLE cxr (id INTEGER, amount INTEGER, name VARCHAR);
+
+statement ok
+INSERT INTO cxl VALUES
+    (1, 10, 'Acme'),   -- matched
+    (3, 30, 'Gone'),   -- left_only
+    (5, 50, 'Eve');    -- differs (amount)
+
+statement ok
+INSERT INTO cxr VALUES
+    (1, 10, 'Acme'),   -- matched
+    (5, 99, 'Eva'),    -- differs
+    (7, 70, 'New');    -- right_only
+
+# ----------------------------------------------------------------------------
+# context := ['name'] -> left_context / right_context columns, pulled from each
+# side. 'name' is excluded from comparison via ignore so it only shows up as
+# context. The absent side of a one-sided row is NULL.
+# ----------------------------------------------------------------------------
+query ITT
+SELECT id, left_context, right_context
+FROM table_diff('cxl', 'cxr', pk := 'id', ignore := ['name'], context := ['name'])
+ORDER BY id;
+----
+1	{"name":"Acme"}	{"name":"Acme"}
+3	{"name":"Gone"}	NULL
+5	{"name":"Eve"}	{"name":"Eva"}
+7	NULL	{"name":"New"}
+
+# diff_data still reflects only the compared, differing columns (amount)
+query T
+SELECT json_keys(diff_data)
+FROM table_diff('cxl', 'cxr', pk := 'id', ignore := ['name'], context := ['name'])
+WHERE id = 5;
+----
+[amount]
+
+# multiple context columns are bundled into one JSON object per side
+query T
+SELECT left_context
+FROM table_diff('cxl', 'cxr', pk := 'id', columns := ['amount'], context := ['amount', 'name'])
+WHERE id = 5;
+----
+{"amount":50,"name":"Eve"}
+
+# without the context argument, the context columns are not produced
+statement error
+SELECT left_context FROM table_diff('cxl', 'cxr', pk := 'id');
+----
+left_context
+
+# ----------------------------------------------------------------------------
+# context := ['*'] with columns present on only one side: the absent side is
+# NULL (compare := 'intersect' so the differing column sets don't error)
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE osl (id INTEGER, a INTEGER, only_l VARCHAR);
+
+statement ok
+CREATE TABLE osr (id INTEGER, a INTEGER, only_r VARCHAR);
+
+statement ok
+INSERT INTO osl VALUES (1, 10, 'L1'), (2, 20, 'L2');
+
+statement ok
+INSERT INTO osr VALUES (1, 10, 'R1'), (2, 99, 'R2');
+
+query ITIITTTTT
+SELECT id, diff_status, a_left, a_right, a_diff,
+       only_l_left, only_l_right, only_r_left, only_r_right
+FROM table_diff('osl', 'osr', pk := 'id', compare := 'intersect', context := ['*'], wide := true)
+ORDER BY id;
+----
+1	matched	10	10	false	L1	NULL	NULL	R1
+2	differs	20	99	true	L2	NULL	NULL	R2
+
+# JSON mode: the one-sided column shows null in the side that lacks it
+query TT
+SELECT left_context, right_context
+FROM table_diff('osl', 'osr', pk := 'id', compare := 'intersect', context := ['*'])
+WHERE id = 1;
+----
+{"only_l":"L1","only_r":null}	{"only_l":null,"only_r":"R1"}

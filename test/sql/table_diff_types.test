@@ -1,0 +1,68 @@
+# name: test/sql/table_diff_types.test
+# description: table_diff across a range of data types (bool, bigint, decimal, date, timestamp, blob)
+# group: [sql]
+
+require duck_diff
+
+require json
+
+statement ok
+CREATE TABLE tt_l (id INTEGER, flag BOOLEAN, bignum BIGINT, amount DECIMAL(10,2), dt DATE, ts TIMESTAMP, blb BLOB);
+
+statement ok
+CREATE TABLE tt_r (id INTEGER, flag BOOLEAN, bignum BIGINT, amount DECIMAL(10,2), dt DATE, ts TIMESTAMP, blb BLOB);
+
+statement ok
+INSERT INTO tt_l VALUES
+    (1, true,  9000000000, 10.50, DATE '2021-01-01', TIMESTAMP '2021-01-01 10:00:00', 'AB'::BLOB),
+    (2, false, 1,          10.50, DATE '2020-12-31', TIMESTAMP '2020-12-31 23:59:59', 'AB'::BLOB);
+
+statement ok
+INSERT INTO tt_r VALUES
+    (1, true,  9000000000, 10.50, DATE '2021-01-01', TIMESTAMP '2021-01-01 10:00:00', 'AB'::BLOB),  -- matched
+    (2, true,  2,          99.99, DATE '2021-06-15', TIMESTAMP '2021-06-15 08:30:00', 'CD'::BLOB);  -- differs (all)
+
+# ----------------------------------------------------------------------------
+# Status + the differing columns across every type
+# ----------------------------------------------------------------------------
+query IT
+SELECT id, diff_status FROM table_diff('tt_l', 'tt_r', pk := 'id') ORDER BY id;
+----
+1	matched
+2	differs
+
+query T
+SELECT diff_columns FROM table_diff('tt_l', 'tt_r', pk := 'id') WHERE id = 2;
+----
+[flag, bignum, amount, dt, ts, blb]
+
+# ----------------------------------------------------------------------------
+# diff_data values per type (extracted as text)
+# ----------------------------------------------------------------------------
+query TTTTTT
+SELECT diff_data->'flag'->>'right',
+       diff_data->'bignum'->>'left',
+       diff_data->'amount'->>'left',
+       diff_data->'dt'->>'right',
+       diff_data->'ts'->>'right',
+       diff_data->'blb'->>'right'
+FROM table_diff('tt_l', 'tt_r', pk := 'id') WHERE id = 2;
+----
+true	1	10.5	2021-06-15	2021-06-15 08:30:00	CD
+
+# types are preserved in the JSON (bool stays bool, bigint stays numeric)
+query T
+SELECT json_type(diff_data->'flag'->'left') = 'BOOLEAN'
+   AND json_type(diff_data->'bignum'->'left') <> 'VARCHAR'
+FROM table_diff('tt_l', 'tt_r', pk := 'id') WHERE id = 2;
+----
+true
+
+# ----------------------------------------------------------------------------
+# Wide mode preserves the native SQL types as real columns
+# ----------------------------------------------------------------------------
+query TTTT
+SELECT typeof(flag_left), typeof(bignum_left), typeof(amount_left), typeof(dt_left)
+FROM table_diff('tt_l', 'tt_r', pk := 'id', wide := true) LIMIT 1;
+----
+BOOLEAN	BIGINT	DECIMAL(10,2)	DATE

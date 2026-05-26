@@ -1,0 +1,68 @@
+# name: test/sql/table_diff_composite.test
+# description: composite primary key (pk + additional_pk) and join-back
+# group: [sql]
+
+require duck_diff
+
+require json
+
+statement ok
+CREATE TABLE cl (region VARCHAR, id INTEGER, v INTEGER);
+
+statement ok
+CREATE TABLE cr (region VARCHAR, id INTEGER, v INTEGER);
+
+statement ok
+INSERT INTO cl VALUES
+    ('US', 1, 10),   -- matched
+    ('US', 2, 20),   -- differs (v)
+    ('EU', 1, 30);   -- left_only
+
+statement ok
+INSERT INTO cr VALUES
+    ('US', 1, 10),   -- matched
+    ('US', 2, 99),   -- differs
+    ('EU', 2, 40);   -- right_only
+
+# ----------------------------------------------------------------------------
+# Composite key: pk := 'region', additional_pk := ['id']
+# Key columns appear under their original names (region, id)
+# ----------------------------------------------------------------------------
+query TIT
+SELECT region, id, diff_status
+FROM table_diff('cl', 'cr', pk := 'region', additional_pk := ['id'])
+ORDER BY region, id;
+----
+EU	1	left_only
+EU	2	right_only
+US	1	matched
+US	2	differs
+
+# diff_data only reflects the differing column v
+query T
+SELECT json_keys(diff_data)
+FROM table_diff('cl', 'cr', pk := 'region', additional_pk := ['id'])
+WHERE region = 'US' AND id = 2;
+----
+[v]
+
+query TT
+SELECT diff_data->'v'->>'left', diff_data->'v'->>'right'
+FROM table_diff('cl', 'cr', pk := 'region', additional_pk := ['id'])
+WHERE region = 'US' AND id = 2;
+----
+20	99
+
+# ----------------------------------------------------------------------------
+# Original key names make joining back to the source natural via USING
+# (cl contains US/1, US/2, EU/1 -> EU/2 right_only is dropped by the join)
+# ----------------------------------------------------------------------------
+query TIT
+SELECT d.region, d.id, d.diff_status
+FROM table_diff('cl', 'cr', pk := 'region', additional_pk := ['id']) d
+JOIN cl USING (region, id)
+ORDER BY region, id;
+----
+EU	1	left_only
+US	1	matched
+US	2	differs

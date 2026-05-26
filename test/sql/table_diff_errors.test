@@ -1,0 +1,65 @@
+# name: test/sql/table_diff_errors.test
+# description: v1 error cases (required pk, missing key, duplicate keys)
+# group: [sql]
+
+require duck_diff
+
+require json
+
+statement ok
+CREATE TABLE a (id INTEGER, x INTEGER);
+
+statement ok
+CREATE TABLE b (id INTEGER, x INTEGER);
+
+statement ok
+INSERT INTO a VALUES (1, 10);
+
+statement ok
+INSERT INTO b VALUES (1, 10);
+
+# ----------------------------------------------------------------------------
+# pk is required
+# ----------------------------------------------------------------------------
+statement error
+SELECT * FROM table_diff('a', 'b');
+----
+pk
+
+# pk column must exist in both relations
+statement error
+SELECT * FROM table_diff('a', 'b', pk := 'nope');
+----
+nope
+
+# ----------------------------------------------------------------------------
+# Duplicate primary keys -> error (key must be unique on both sides)
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE dl (id INTEGER, v INTEGER);
+
+statement ok
+CREATE TABLE dr (id INTEGER, v INTEGER);
+
+statement ok
+INSERT INTO dl VALUES (1, 1), (1, 2);
+
+statement ok
+INSERT INTO dr VALUES (1, 1);
+
+statement error
+SELECT * FROM table_diff('dl', 'dr', pk := 'id');
+----
+duplicate
+
+# duplicate on the right side is also an error
+statement ok
+DELETE FROM dl WHERE v = 2;
+
+statement ok
+INSERT INTO dr VALUES (1, 9);
+
+statement error
+SELECT * FROM table_diff('dl', 'dr', pk := 'id');
+----
+duplicate
