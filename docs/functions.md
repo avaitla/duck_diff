@@ -46,7 +46,8 @@ table_diff(left, right,
 |--------|------|-------------|
 | *key columns* | original types | The key column(s), under their **original names** (so you can join back with `USING`). |
 | `<prefix>status` | VARCHAR | `matched` / `differs` / `left_only` / `right_only`. Default name `diff_status`. |
-| `<prefix>data` | JSON | For `differs` rows, an object of the differing columns: `{"col": {"left": …, "right": …}}`. NULL otherwise. Default name `diff_data`. |
+| `<prefix>columns` | VARCHAR[] | For `differs` rows, the names of the differing columns; NULL otherwise. Default name `diff_columns`. |
+| `<prefix>data` | JSON | For `differs` rows, an object of the differing columns: `{"col": {"left": …, "right": …}}`. NULL otherwise. Default name `diff_data`. (Replaced by expanded columns in wide mode.) |
 | `left_context` | JSON | Present only when `context` is set: the `context` columns from the left row, or NULL if the left row is absent. |
 | `right_context` | JSON | As above, from the right row. |
 

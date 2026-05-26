@@ -308,10 +308,11 @@ string ContextObject(const string &alias, const vector<string> &cols) {
 	return "json_object(" + args + ")";
 }
 
-// Generate the full diff query. status_col / diff_data_col give the output
-// names for the meta columns; key_select controls whether the key columns are
-// projected (table_diff) or not (summary).
-string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string &diff_data_col, bool project_keys) {
+// Generate the full diff query. status_col / diff_cols_col / diff_data_col give
+// the output names for the meta columns; key_select controls whether the key
+// columns are projected (table_diff) or not (summary).
+string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string &diff_cols_col,
+                    const string &diff_data_col, bool project_keys) {
 	// join condition + key projection + key list (for dup detection)
 	string join_cond, key_select, key_list;
 	for (idx_t i = 0; i < plan.key_cols.size(); i++) {
@@ -340,7 +341,25 @@ string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string
 		}
 	}
 
-	// columns after diff_status: either the JSON diff_data (+ context objects) or,
+	// diff_columns: list of the differing column names, populated for 'differs' rows
+	string cols_expr;
+	if (plan.value_cols.empty()) {
+		cols_expr = "CAST(NULL AS VARCHAR[])";
+	} else {
+		string items;
+		for (idx_t i = 0; i < plan.value_cols.size(); i++) {
+			string q = QuoteIdent(plan.value_cols[i]);
+			string lit = QuoteLiteral(plan.value_cols[i]);
+			if (i) {
+				items += ", ";
+			}
+			items += "CASE WHEN l." + q + " IS DISTINCT FROM r." + q + " THEN " + lit + " END";
+		}
+		cols_expr = "CASE WHEN l.__p AND r.__p AND NOT (" + all_eq + ") THEN list_filter([" + items +
+		            "], lambda x: x IS NOT NULL) END";
+	}
+
+	// columns after diff_columns: either the JSON diff_data (+ context objects) or,
 	// in wide mode, one expanded set of columns per compared / context column
 	string middle_select;
 	if (plan.wide) {
@@ -395,8 +414,9 @@ string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string
 	string sql = "WITH __l AS (SELECT __t.*, TRUE AS __p FROM (SELECT * FROM " + plan.left + ") __t), " +
 	             "__r AS (SELECT __t.*, TRUE AS __p FROM (SELECT * FROM " + plan.right + ") __t) " + "SELECT " +
 	             key_select + "CASE WHEN r.__p IS NULL THEN 'left_only' WHEN l.__p IS NULL THEN 'right_only' WHEN " +
-	             all_eq + " THEN 'matched' ELSE 'differs' END AS " + QuoteIdent(status_col) + middle_select +
-	             " FROM __l AS l FULL OUTER JOIN __r AS r ON " + join_cond + " WHERE (CASE WHEN " + dup_cond +
+	             all_eq + " THEN 'matched' ELSE 'differs' END AS " + QuoteIdent(status_col) + ", " + cols_expr +
+	             " AS " + QuoteIdent(diff_cols_col) + middle_select + " FROM __l AS l FULL OUTER JOIN __r AS r ON " +
+	             join_cond + " WHERE (CASE WHEN " + dup_cond +
 	             " THEN error('table_diff: duplicate primary key values found in input') END) IS NULL";
 	return sql;
 }
@@ -419,6 +439,7 @@ unique_ptr<TableRef> TableDiffBindReplace(ClientContext &context, TableFunctionB
 	auto plan = ResolvePlan(context, input);
 
 	string status_col = plan.prefix + "status";
+	string diff_cols_col = plan.prefix + "columns";
 	string diff_data_col = plan.prefix + "data";
 
 	// collision check across output column names
@@ -437,6 +458,7 @@ unique_ptr<TableRef> TableDiffBindReplace(ClientContext &context, TableFunctionB
 		out_names.insert(name);
 	};
 	check(status_col);
+	check(diff_cols_col);
 	if (plan.wide) {
 		for (auto &c : plan.value_cols) {
 			check(c + "_left");
@@ -455,7 +477,7 @@ unique_ptr<TableRef> TableDiffBindReplace(ClientContext &context, TableFunctionB
 		}
 	}
 
-	return ParseSubquery(context, BuildDiffSQL(plan, status_col, diff_data_col, /*project_keys=*/true));
+	return ParseSubquery(context, BuildDiffSQL(plan, status_col, diff_cols_col, diff_data_col, /*project_keys=*/true));
 }
 
 unique_ptr<TableRef> TableDiffSummaryBindReplace(ClientContext &context, TableFunctionBindInput &input) {
@@ -463,7 +485,7 @@ unique_ptr<TableRef> TableDiffSummaryBindReplace(ClientContext &context, TableFu
 	// context/keys/wide are irrelevant to the summary; clear them so we only project status
 	plan.has_context = false;
 	plan.wide = false;
-	string inner = BuildDiffSQL(plan, "status", "diff_data", /*project_keys=*/false);
+	string inner = BuildDiffSQL(plan, "status", "diff_columns", "diff_data", /*project_keys=*/false);
 	string sql = "SELECT count(*) FILTER (WHERE status = 'matched') AS n_matched, "
 	             "count(*) FILTER (WHERE status = 'differs') AS n_differs, "
 	             "count(*) FILTER (WHERE status = 'left_only') AS n_left_only, "

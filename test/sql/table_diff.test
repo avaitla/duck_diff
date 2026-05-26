@@ -78,6 +78,28 @@ WHERE diff_status <> 'differs' ORDER BY id;
 8	NULL
 
 # ----------------------------------------------------------------------------
+# diff_columns: names of the differing columns, populated only for 'differs'
+# ----------------------------------------------------------------------------
+query T
+SELECT diff_columns FROM table_diff('l', 'r', pk := 'id') WHERE id = 5;
+----
+[number, email]
+
+query T
+SELECT diff_columns FROM table_diff('l', 'r', pk := 'id') WHERE id = 9;
+----
+[email]
+
+query IT
+SELECT id, diff_columns FROM table_diff('l', 'r', pk := 'id')
+WHERE diff_status <> 'differs' ORDER BY id;
+----
+1	NULL
+3	NULL
+7	NULL
+8	NULL
+
+# ----------------------------------------------------------------------------
 # diff_data content: only differing columns appear (key 5 differs on
 # number+email, NOT score -> score absent)
 # ----------------------------------------------------------------------------
