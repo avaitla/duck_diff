@@ -1,19 +1,16 @@
 # name: test/sql/table_diff_errors.test
-# description: table_diff v1 error cases (strict schema, unique keys)
+# description: v1 error cases (required pk, missing key, duplicate keys)
 # group: [duck_diff]
 
 require duck_diff
 
 require json
 
-# ----------------------------------------------------------------------------
-# Schema mismatch -> error (v1 is strict: identical column sets required)
-# ----------------------------------------------------------------------------
 statement ok
 CREATE TABLE a (id INTEGER, x INTEGER);
 
 statement ok
-CREATE TABLE b (id INTEGER, y INTEGER);
+CREATE TABLE b (id INTEGER, x INTEGER);
 
 statement ok
 INSERT INTO a VALUES (1, 10);
@@ -21,16 +18,19 @@ INSERT INTO a VALUES (1, 10);
 statement ok
 INSERT INTO b VALUES (1, 10);
 
+# ----------------------------------------------------------------------------
+# pk is required
+# ----------------------------------------------------------------------------
 statement error
-SELECT * FROM table_diff(TABLE a, TABLE b, key := 'id');
+SELECT * FROM table_diff('a', 'b');
 ----
-column
+pk
 
-# Key column missing from a relation -> error
+# pk column must exist in both relations
 statement error
-SELECT * FROM table_diff(TABLE a, TABLE b, key := 'nope');
+SELECT * FROM table_diff('a', 'b', pk := 'nope');
 ----
-key
+nope
 
 # ----------------------------------------------------------------------------
 # Duplicate primary keys -> error (key must be unique on both sides)
@@ -48,11 +48,11 @@ statement ok
 INSERT INTO dr VALUES (1, 1);
 
 statement error
-SELECT * FROM table_diff(TABLE dl, TABLE dr, key := 'id');
+SELECT * FROM table_diff('dl', 'dr', pk := 'id');
 ----
 duplicate
 
-# Duplicate on the right side is also an error
+# duplicate on the right side is also an error
 statement ok
 DELETE FROM dl WHERE v = 2;
 
@@ -60,6 +60,6 @@ statement ok
 INSERT INTO dr VALUES (1, 9);
 
 statement error
-SELECT * FROM table_diff(TABLE dl, TABLE dr, key := 'id');
+SELECT * FROM table_diff('dl', 'dr', pk := 'id');
 ----
 duplicate

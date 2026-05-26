@@ -27,40 +27,26 @@ INSERT INTO r VALUES (1, 1), (2, 99), (4, 4), (5, 5);
 # ----------------------------------------------------------------------------
 query IIII
 SELECT n_matched, n_differs, n_left_only, n_right_only
-FROM table_diff_summary(TABLE l, TABLE r, key := 'id');
+FROM table_diff_summary('l', 'r', pk := 'id');
 ----
 2	1	1	1
 
-statement ok
-DROP TABLE r;
-
-statement ok
-CREATE TABLE r (id INTEGER, v INTEGER);
-
-statement ok
-INSERT INTO r VALUES (1, 1), (2, 2), (3, 3), (5, 5);
-
 # ----------------------------------------------------------------------------
-# tables_equal: true when every key is matched, false otherwise
+# tables_equal: false when anything differs/added/removed
 # ----------------------------------------------------------------------------
-query I
-SELECT tables_equal(TABLE l, TABLE r, key := 'id');
+query T
+SELECT tables_equal('l', 'r', pk := 'id');
+----
+false
+
+# true when every key matches
+statement ok
+CREATE TABLE r2 (id INTEGER, v INTEGER);
+
+statement ok
+INSERT INTO r2 VALUES (1, 1), (2, 2), (3, 3), (5, 5);
+
+query T
+SELECT tables_equal('l', 'r2', pk := 'id');
 ----
 true
-
-statement ok
-UPDATE r SET v = 0 WHERE id = 2;
-
-query I
-SELECT tables_equal(TABLE l, TABLE r, key := 'id');
-----
-false
-
-# missing key also breaks equality
-statement ok
-DELETE FROM r WHERE id = 3;
-
-query I
-SELECT tables_equal(TABLE l, TABLE r, key := 'id');
-----
-false

@@ -1,10 +1,14 @@
 # name: test/sql/table_diff.test
-# description: table_diff core behavior
+# description: table_diff core behavior (single key, strict default)
 # group: [duck_diff]
+#
+# Output schema: key column(s) under their ORIGINAL names, then diff_status,
+# then diff_data (JSON). Meta columns default to the 'diff_' prefix to avoid
+# colliding with real columns.
 
 # Before the extension is loaded, the function does not exist.
 statement error
-SELECT * FROM table_diff(TABLE l, TABLE r, key := 'id');
+SELECT * FROM table_diff('l', 'r', pk := 'id');
 ----
 Catalog Error
 
@@ -13,11 +17,9 @@ require duck_diff
 require json
 
 # ----------------------------------------------------------------------------
-# Fixtures
+# Fixtures: value columns of different types to exercise JSON type preservation
+#   number=INTEGER, email=VARCHAR, score=DOUBLE
 # ----------------------------------------------------------------------------
-# Three value columns of different types so we exercise type preservation in
-# the JSON diff (number=INTEGER, email=VARCHAR, score=DOUBLE).
-
 statement ok
 CREATE TABLE l (id INTEGER, number INTEGER, email VARCHAR, score DOUBLE);
 
@@ -30,21 +32,21 @@ INSERT INTO l VALUES
     (3, 30, 'c@x', 3.5),   -- left_only
     (5, 50, 'e@x', 5.5),   -- differs (number + email)
     (8, 80, NULL,  8.5),   -- matched (NULL email both sides)
-    (9, 90, 'i@x', 9.5);   -- differs (email NULL on right only)
+    (9, 90, 'i@x', 9.5);   -- differs (email -> NULL)
 
 statement ok
 INSERT INTO r VALUES
     (1, 10, 'a@x', 1.5),   -- matched
-    (5, 99, 'E@x', 5.5),   -- differs (number + email)
+    (5, 99, 'E@x', 5.5),   -- differs
     (7, 70, 'g@x', 7.5),   -- right_only
-    (8, 80, NULL,  8.5),   -- matched (NULL email both sides)
-    (9, 90, NULL,  9.5);   -- differs (email NULL on right)
+    (8, 80, NULL,  8.5),   -- matched
+    (9, 90, NULL,  9.5);   -- differs (email -> NULL)
 
 # ----------------------------------------------------------------------------
-# Status column: every key gets exactly one row with the right status
+# key column (original name 'id') + diff_status, one row per distinct key
 # ----------------------------------------------------------------------------
 query IT
-SELECT pk_id, status FROM table_diff(TABLE l, TABLE r, key := 'id') ORDER BY pk_id;
+SELECT id, diff_status FROM table_diff('l', 'r', pk := 'id') ORDER BY id;
 ----
 1	matched
 3	left_only
@@ -53,18 +55,23 @@ SELECT pk_id, status FROM table_diff(TABLE l, TABLE r, key := 'id') ORDER BY pk_
 8	matched
 9	differs
 
-# Row count == number of distinct keys across both sides
 query I
-SELECT count(*) FROM table_diff(TABLE l, TABLE r, key := 'id');
+SELECT count(*) FROM table_diff('l', 'r', pk := 'id');
 ----
 6
 
+# Single-element list form of pk is equivalent to the string form
+query I
+SELECT count(*) FROM table_diff('l', 'r', pk := ['id']) WHERE diff_status = 'differs';
+----
+2
+
 # ----------------------------------------------------------------------------
-# diff column is NULL for everything except 'differs'
+# diff_data is NULL except for 'differs'
 # ----------------------------------------------------------------------------
 query IT
-SELECT pk_id, diff FROM table_diff(TABLE l, TABLE r, key := 'id')
-WHERE status <> 'differs' ORDER BY pk_id;
+SELECT id, diff_data FROM table_diff('l', 'r', pk := 'id')
+WHERE diff_status <> 'differs' ORDER BY id;
 ----
 1	NULL
 3	NULL
@@ -72,73 +79,72 @@ WHERE status <> 'differs' ORDER BY pk_id;
 8	NULL
 
 # ----------------------------------------------------------------------------
-# diff content: only differing columns appear
+# diff_data content: only differing columns appear (key 5 differs on
+# number+email, NOT score -> score absent)
 # ----------------------------------------------------------------------------
-# key 5 differs on number and email but NOT score -> score absent
-query I
-SELECT json_keys(diff) FROM table_diff(TABLE l, TABLE r, key := 'id') WHERE pk_id = 5;
+query T
+SELECT json_keys(diff_data) FROM table_diff('l', 'r', pk := 'id') WHERE id = 5;
 ----
 [number, email]
 
-# left/right values for key 5
 query TT
-SELECT diff->'number'->>'left', diff->'number'->>'right'
-FROM table_diff(TABLE l, TABLE r, key := 'id') WHERE pk_id = 5;
+SELECT diff_data->'number'->>'left', diff_data->'number'->>'right'
+FROM table_diff('l', 'r', pk := 'id') WHERE id = 5;
 ----
 10	99
 
 query TT
-SELECT diff->'email'->>'left', diff->'email'->>'right'
-FROM table_diff(TABLE l, TABLE r, key := 'id') WHERE pk_id = 5;
+SELECT diff_data->'email'->>'left', diff_data->'email'->>'right'
+FROM table_diff('l', 'r', pk := 'id') WHERE id = 5;
 ----
 e@x	E@x
 
 # ----------------------------------------------------------------------------
-# NULL semantics: NULL IS NOT DISTINCT FROM NULL -> matched (key 8)
+# NULL semantics: NULL IS NOT DISTINCT FROM NULL -> matched (key 8);
+# value vs NULL -> differs (key 9, email)
 # ----------------------------------------------------------------------------
 query T
-SELECT status FROM table_diff(TABLE l, TABLE r, key := 'id') WHERE pk_id = 8;
+SELECT diff_status FROM table_diff('l', 'r', pk := 'id') WHERE id = 8;
 ----
 matched
 
-# value vs NULL -> differs, and NULL is represented as JSON null (key 9, email)
 query T
-SELECT json_keys(diff) FROM table_diff(TABLE l, TABLE r, key := 'id') WHERE pk_id = 9;
+SELECT json_keys(diff_data) FROM table_diff('l', 'r', pk := 'id') WHERE id = 9;
 ----
 [email]
 
 query TT
-SELECT diff->'email'->>'left', json_type(diff->'email'->'right')
-FROM table_diff(TABLE l, TABLE r, key := 'id') WHERE pk_id = 9;
+SELECT diff_data->'email'->>'left', json_type(diff_data->'email'->'right')
+FROM table_diff('l', 'r', pk := 'id') WHERE id = 9;
 ----
 i@x	NULL
 
 # ----------------------------------------------------------------------------
-# Type preservation in JSON: int stays a number, string stays a string
+# Type preservation: number stays numeric, email stays VARCHAR
+# (robust to exact integer type name)
 # ----------------------------------------------------------------------------
-query TT
-SELECT json_type(diff->'number'->'left'), json_type(diff->'email'->'left')
-FROM table_diff(TABLE l, TABLE r, key := 'id') WHERE pk_id = 5;
+query T
+SELECT json_type(diff_data->'number'->'left') <> 'VARCHAR'
+   AND json_type(diff_data->'email'->'left') = 'VARCHAR'
+FROM table_diff('l', 'r', pk := 'id') WHERE id = 5;
 ----
-UBIGINT	VARCHAR
+true
 
 # ----------------------------------------------------------------------------
-# Relation input: subqueries / read-like sources, not just named tables
+# Relation input: subqueries, not just named tables
 # ----------------------------------------------------------------------------
 query IT
-SELECT pk_id, status FROM table_diff(
-    (SELECT * FROM l WHERE id <= 3),
-    (SELECT * FROM r WHERE id <= 3),
-    key := 'id'
-) ORDER BY pk_id;
+SELECT id, diff_status FROM table_diff(
+    '(SELECT * FROM l WHERE id <= 3)',
+    '(SELECT * FROM r WHERE id <= 3)',
+    pk := 'id'
+) ORDER BY id;
 ----
 1	matched
 3	left_only
 
-# ----------------------------------------------------------------------------
-# Identical relations -> all matched, no diffs
-# ----------------------------------------------------------------------------
+# Identical relations -> all matched
 query I
-SELECT count(*) FROM table_diff(TABLE l, TABLE l, key := 'id') WHERE status <> 'matched';
+SELECT count(*) FROM table_diff('l', 'l', pk := 'id') WHERE diff_status <> 'matched';
 ----
 0
