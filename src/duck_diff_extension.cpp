@@ -179,9 +179,15 @@ DiffPlan ResolvePlan(ClientContext &context, TableFunctionBindInput &input) {
 	if (auto *ign = FindParam(input, "ignore")) {
 		ignore_columns = ValueToStringList(*ign);
 	}
+	bool context_all = false;
 	if (auto *ctx = FindParam(input, "context")) {
 		plan.context_cols = ValueToStringList(*ctx);
 		plan.has_context = true;
+		// context := ['*'] -> pull in every non-key column not already compared
+		if (plan.context_cols.size() == 1 && plan.context_cols[0] == "*") {
+			context_all = true;
+			plan.context_cols.clear();
+		}
 	}
 	if (auto *pre = FindParam(input, "prefix")) {
 		plan.prefix = pre->ToString();
@@ -275,6 +281,23 @@ DiffPlan ResolvePlan(ClientContext &context, TableFunctionBindInput &input) {
 				throw BinderException("table_diff: column \"%s\" exists on the right but not the left; column sets "
 				                      "differ (use compare := 'intersect' to compare only common columns)",
 				                      name);
+			}
+		}
+	}
+
+	// context := ['*']: every non-key column present in both, excluding the
+	// columns already compared (those are shown via diff_data / wide _diff)
+	if (context_all) {
+		case_insensitive_set_t value_set;
+		for (auto &c : plan.value_cols) {
+			value_set.insert(c);
+		}
+		for (auto &name : ls.names) {
+			if (key_set.find(name) != key_set.end() || value_set.find(name) != value_set.end()) {
+				continue;
+			}
+			if (rmap.find(name) != rmap.end()) {
+				plan.context_cols.push_back(name);
 			}
 		}
 	}

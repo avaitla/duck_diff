@@ -65,9 +65,57 @@ See [docs/functions.md](docs/functions.md) for the full reference.
   `columns := [...]` / `ignore := [...]`.
 - **Context**: `context := ['name']` pulls those columns from both sides into
   `left_context` / `right_context` JSON columns — handy for understanding why a
-  row is `left_only`/`right_only`.
+  row is `left_only`/`right_only`. `context := ['*']` pulls in every non-key
+  column not already compared; with `wide := true` that yields a full
+  side-by-side of all columns for dashboards.
 - **Collisions**: meta columns default to a `diff_` prefix; override with
   `prefix := 'cmp_'` if a key column would clash.
+
+## Diffing external sources (BigQuery, Postgres, CSV, …)
+
+Because the relation arguments are strings spliced in after `FROM`, any table
+function from another extension works. Use DuckDB's dollar-quoting (`$$…$$`) so
+the inner quotes need no escaping:
+
+```sql
+INSTALL bigquery FROM community; LOAD bigquery;
+ATTACH 'project=my-project' AS bq (TYPE bigquery, READ_ONLY);  -- uses local ADC
+
+FROM table_diff(
+  $$ bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260101') $$,
+  $$ bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260526') $$,
+  pk := 'id',
+  ignore := ['updated_at', 'updated_by']   -- drop metadata churn from the comparison
+);
+```
+
+### Performance & caching
+
+DuckDB has no automatic cross-query result cache, and `table_diff` references
+each side more than once internally (the join plus the duplicate-key check). For
+an expensive remote source, **materialize each side once** into a local table —
+that local copy is your cache, and every subsequent diff/summary is free of the
+remote scan:
+
+```sql
+-- run with a file-backed db (e.g. `duckdb cache.db`) to persist across sessions
+CREATE TABLE IF NOT EXISTS jan AS
+  SELECT * FROM bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260101');
+CREATE TABLE IF NOT EXISTS may AS
+  SELECT * FROM bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260526');
+
+FROM table_diff_summary('jan', 'may', pk := 'id');                 -- counts + percentages
+FROM table_diff('jan', 'may', pk := 'id') WHERE diff_status='differs' LIMIT 20;
+-- which columns change most often:
+SELECT col, count(*) FROM (
+  SELECT unnest(diff_columns) AS col
+  FROM table_diff('jan', 'may', pk := 'id') WHERE diff_status='differs'
+) GROUP BY col ORDER BY count(*) DESC;
+```
+
+`CREATE TABLE IF NOT EXISTS` scans the source only the first time. Within a
+single query you can also force one shared scan with a `WITH x AS MATERIALIZED
+(...)` CTE.
 
 ## Building
 

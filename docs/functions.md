@@ -2,8 +2,12 @@
 
 `table_diff` and `table_diff_summary` are table functions; `tables_equal` is a
 scalar. The two relations are passed as **strings** — anything valid after
-`FROM`: a table/view name, a table function (`read_csv(...)`), or a
-parenthesized subquery.
+`FROM`: a table/view name, a table function (`read_csv(...)`,
+`bigquery_query(...)`), or a parenthesized subquery. When the relation string
+itself contains quotes, use DuckDB dollar-quoting to avoid escaping:
+`$$ bigquery_query('bq', 'SELECT …') $$`. For diffing expensive remote sources
+efficiently, see the caching notes in the
+[README](../README.md#performance--caching).
 
 ---
 
@@ -37,7 +41,7 @@ table_diff(left, right,
 | `columns` | LIST | Restrict the compared (non-key) columns to this list. |
 | `ignore` | LIST | Exclude these columns from comparison. |
 | `prefix` | VARCHAR | Prefix for the meta output columns (default `'diff_'`). |
-| `context` | LIST | Columns pulled from **both** sides into `left_context` / `right_context`. |
+| `context` | LIST | Columns pulled from **both** sides into `left_context` / `right_context`. Use `['*']` to pull in every non-key column not already compared — with `wide := true` this gives a full side-by-side of all columns (handy for dashboards). |
 | `wide` | BOOLEAN | When `true`, expand each compared column into `<c>_left` / `<c>_right` / `<c>_diff` and each context column into `<c>_left` / `<c>_right`, instead of the JSON `diff_data` / `left_context` / `right_context` columns. Native types are preserved as real columns. |
 
 ### Output columns
