@@ -46,6 +46,9 @@ See [docs/functions.md](docs/functions.md) for the full reference.
   comparison (`IS NOT DISTINCT FROM`, so `NULL` equals `NULL`).
 - **`diff_data`** (JSON): for `differs` rows, only the columns that changed, as
   `{"col": {"left": …, "right": …}}`, with native types preserved.
+- **Wide mode** (`wide := true`): expand each compared column into
+  `<c>_left` / `<c>_right` / `<c>_diff` (and context into `<c>_left`/`<c>_right`)
+  as real typed columns instead of JSON.
 - **Schema policy**: `compare := 'strict'` (default — relations must match) or
   `'intersect'` (compare only common, same-typed columns). Refine with
   `columns := [...]` / `ignore := [...]`.

@@ -21,7 +21,8 @@ table_diff(left, right,
            columns := [...],             -- only compare these non-key columns
            ignore := [...],              -- exclude these columns from comparison
            prefix := 'diff_',            -- prefix for the meta output columns
-           context := [...])             -- pull these columns from both sides
+           context := [...],             -- pull these columns from both sides
+           wide := false)                -- expand columns instead of JSON diff_data
         -> TABLE
 ```
 
@@ -37,6 +38,7 @@ table_diff(left, right,
 | `ignore` | LIST | Exclude these columns from comparison. |
 | `prefix` | VARCHAR | Prefix for the meta output columns (default `'diff_'`). |
 | `context` | LIST | Columns pulled from **both** sides into `left_context` / `right_context`. |
+| `wide` | BOOLEAN | When `true`, expand each compared column into `<c>_left` / `<c>_right` / `<c>_diff` and each context column into `<c>_left` / `<c>_right`, instead of the JSON `diff_data` / `left_context` / `right_context` columns. Native types are preserved as real columns. |
 
 ### Output columns
 
@@ -81,6 +83,10 @@ FROM table_diff('a', 'b', pk := 'id', compare := 'intersect');
 
 -- Ignore a column from comparison but keep it visible for context
 FROM table_diff('a', 'b', pk := 'id', ignore := ['updated_at'], context := ['name']);
+
+-- Wide mode: a column per side plus a per-column diff flag, types preserved
+FROM table_diff('a', 'b', pk := 'id', wide := true);
+-- id | diff_status | amount_left | amount_right | amount_diff | ...
 ```
 
 ### Errors

@@ -119,6 +119,7 @@ struct DiffPlan {
 	vector<string> value_cols;   // compared non-key columns, in order
 	vector<string> context_cols; // pulled from both sides into left_context / right_context
 	bool has_context = false;
+	bool wide = false; // expand columns (a_left/a_right/a_diff) instead of JSON diff_data
 	string prefix = "diff_";
 };
 
@@ -184,6 +185,9 @@ DiffPlan ResolvePlan(ClientContext &context, TableFunctionBindInput &input) {
 	}
 	if (auto *pre = FindParam(input, "prefix")) {
 		plan.prefix = pre->ToString();
+	}
+	if (auto *w = FindParam(input, "wide")) {
+		plan.wide = BooleanValue::Get(*w);
 	}
 
 	// introspect both sides
@@ -336,34 +340,53 @@ string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string
 		}
 	}
 
-	// diff_data: JSON of only the differing columns, populated for 'differs' rows
-	string diff_expr;
-	if (plan.value_cols.empty()) {
-		diff_expr = "CAST(NULL AS JSON)";
-	} else {
-		string merges;
-		for (idx_t i = 0; i < plan.value_cols.size(); i++) {
-			string q = QuoteIdent(plan.value_cols[i]);
-			string lit = QuoteLiteral(plan.value_cols[i]);
-			if (i) {
-				merges += ", ";
-			}
-			merges += "CASE WHEN l." + q + " IS DISTINCT FROM r." + q + " THEN json_object(" + lit +
-			          ", json_object('left', l." + q + ", 'right', r." + q + ")) ELSE CAST('{}' AS JSON) END";
+	// columns after diff_status: either the JSON diff_data (+ context objects) or,
+	// in wide mode, one expanded set of columns per compared / context column
+	string middle_select;
+	if (plan.wide) {
+		// per compared column: <c>_left, <c>_right, <c>_diff (the per-column result
+		// of the same IS [NOT] DISTINCT FROM comparison used for the row status)
+		for (auto &c : plan.value_cols) {
+			string q = QuoteIdent(c);
+			middle_select += ", l." + q + " AS " + QuoteIdent(c + "_left");
+			middle_select += ", r." + q + " AS " + QuoteIdent(c + "_right");
+			middle_select += ", (l." + q + " IS DISTINCT FROM r." + q + ") AS " + QuoteIdent(c + "_diff");
 		}
-		// seed with an empty object so json_merge_patch always has >= 2 args
-		diff_expr = "CASE WHEN l.__p AND r.__p AND NOT (" + all_eq + ") THEN json_merge_patch(CAST('{}' AS JSON), " +
-		            merges + ") END";
-	}
-
-	// context columns (only present when requested): JSON object or NULL on the
-	// side that does not exist for this row
-	string context_select;
-	if (plan.has_context) {
-		context_select +=
-		    ", CASE WHEN l.__p THEN " + ContextObject("l", plan.context_cols) + " END AS \"left_context\"";
-		context_select +=
-		    ", CASE WHEN r.__p THEN " + ContextObject("r", plan.context_cols) + " END AS \"right_context\"";
+		// per context column: <c>_left, <c>_right (no _diff; not compared)
+		for (auto &c : plan.context_cols) {
+			string q = QuoteIdent(c);
+			middle_select += ", l." + q + " AS " + QuoteIdent(c + "_left");
+			middle_select += ", r." + q + " AS " + QuoteIdent(c + "_right");
+		}
+	} else {
+		// diff_data: JSON of only the differing columns, populated for 'differs' rows
+		string diff_expr;
+		if (plan.value_cols.empty()) {
+			diff_expr = "CAST(NULL AS JSON)";
+		} else {
+			string merges;
+			for (idx_t i = 0; i < plan.value_cols.size(); i++) {
+				string q = QuoteIdent(plan.value_cols[i]);
+				string lit = QuoteLiteral(plan.value_cols[i]);
+				if (i) {
+					merges += ", ";
+				}
+				merges += "CASE WHEN l." + q + " IS DISTINCT FROM r." + q + " THEN json_object(" + lit +
+				          ", json_object('left', l." + q + ", 'right', r." + q + ")) ELSE CAST('{}' AS JSON) END";
+			}
+			// seed with an empty object so json_merge_patch always has >= 2 args
+			diff_expr = "CASE WHEN l.__p AND r.__p AND NOT (" + all_eq +
+			            ") THEN json_merge_patch(CAST('{}' AS JSON), " + merges + ") END";
+		}
+		middle_select = ", " + diff_expr + " AS " + QuoteIdent(diff_data_col);
+		// context columns (only present when requested): JSON object or NULL on the
+		// side that does not exist for this row
+		if (plan.has_context) {
+			middle_select +=
+			    ", CASE WHEN l.__p THEN " + ContextObject("l", plan.context_cols) + " END AS \"left_context\"";
+			middle_select +=
+			    ", CASE WHEN r.__p THEN " + ContextObject("r", plan.context_cols) + " END AS \"right_context\"";
+		}
 	}
 
 	string dup_cond = "EXISTS (SELECT 1 FROM __l GROUP BY " + key_list + " HAVING count(*) > 1) OR " +
@@ -372,9 +395,8 @@ string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string
 	string sql = "WITH __l AS (SELECT __t.*, TRUE AS __p FROM (SELECT * FROM " + plan.left + ") __t), " +
 	             "__r AS (SELECT __t.*, TRUE AS __p FROM (SELECT * FROM " + plan.right + ") __t) " + "SELECT " +
 	             key_select + "CASE WHEN r.__p IS NULL THEN 'left_only' WHEN l.__p IS NULL THEN 'right_only' WHEN " +
-	             all_eq + " THEN 'matched' ELSE 'differs' END AS " + QuoteIdent(status_col) + ", " + diff_expr +
-	             " AS " + QuoteIdent(diff_data_col) + context_select + " FROM __l AS l FULL OUTER JOIN __r AS r ON " +
-	             join_cond + " WHERE (CASE WHEN " + dup_cond +
+	             all_eq + " THEN 'matched' ELSE 'differs' END AS " + QuoteIdent(status_col) + middle_select +
+	             " FROM __l AS l FULL OUTER JOIN __r AS r ON " + join_cond + " WHERE (CASE WHEN " + dup_cond +
 	             " THEN error('table_diff: duplicate primary key values found in input') END) IS NULL";
 	return sql;
 }
@@ -415,10 +437,22 @@ unique_ptr<TableRef> TableDiffBindReplace(ClientContext &context, TableFunctionB
 		out_names.insert(name);
 	};
 	check(status_col);
-	check(diff_data_col);
-	if (plan.has_context) {
-		check("left_context");
-		check("right_context");
+	if (plan.wide) {
+		for (auto &c : plan.value_cols) {
+			check(c + "_left");
+			check(c + "_right");
+			check(c + "_diff");
+		}
+		for (auto &c : plan.context_cols) {
+			check(c + "_left");
+			check(c + "_right");
+		}
+	} else {
+		check(diff_data_col);
+		if (plan.has_context) {
+			check("left_context");
+			check("right_context");
+		}
 	}
 
 	return ParseSubquery(context, BuildDiffSQL(plan, status_col, diff_data_col, /*project_keys=*/true));
@@ -426,8 +460,9 @@ unique_ptr<TableRef> TableDiffBindReplace(ClientContext &context, TableFunctionB
 
 unique_ptr<TableRef> TableDiffSummaryBindReplace(ClientContext &context, TableFunctionBindInput &input) {
 	auto plan = ResolvePlan(context, input);
-	// context/keys are irrelevant to the summary; clear them so we only project status
+	// context/keys/wide are irrelevant to the summary; clear them so we only project status
 	plan.has_context = false;
+	plan.wide = false;
 	string inner = BuildDiffSQL(plan, "status", "diff_data", /*project_keys=*/false);
 	string sql = "SELECT count(*) FILTER (WHERE status = 'matched') AS n_matched, "
 	             "count(*) FILTER (WHERE status = 'differs') AS n_differs, "
@@ -449,6 +484,7 @@ void AddDiffParameters(TableFunction &fun) {
 	fun.named_parameters["ignore"] = LogicalType::LIST(LogicalType::VARCHAR);
 	fun.named_parameters["prefix"] = LogicalType::VARCHAR;
 	fun.named_parameters["context"] = LogicalType::LIST(LogicalType::VARCHAR);
+	fun.named_parameters["wide"] = LogicalType::BOOLEAN;
 }
 
 void LoadInternal(ExtensionLoader &loader) {
