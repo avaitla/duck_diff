@@ -560,6 +560,62 @@ unique_ptr<TableRef> TableDiffSummaryBindReplace(ClientContext &context, TableFu
 	return ParseSubquery(context, sql);
 }
 
+// schema_diff(left, right): one row per column (union of both schemas) with the
+// type on each side and a status (matched / type_differs / left_only /
+// right_only). Computed entirely from the bound schemas; reads no data.
+unique_ptr<TableRef> SchemaDiffBindReplace(ClientContext &context, TableFunctionBindInput &input) {
+	if (input.inputs.size() < 2) {
+		throw BinderException("schema_diff: requires two relation arguments (left, right)");
+	}
+	auto left = input.inputs[0].ToString();
+	auto right = input.inputs[1].ToString();
+	auto ls = InspectRelation(context, input.binder, left, "left");
+	auto rs = InspectRelation(context, input.binder, right, "right");
+
+	case_insensitive_map_t<LogicalType> rmap;
+	for (idx_t i = 0; i < rs.names.size(); i++) {
+		rmap[rs.names[i]] = rs.types[i];
+	}
+
+	string rows;
+	auto add_row = [&](const string &name, const string &left_type, bool has_left, const string &right_type,
+	                   bool has_right, const string &status) {
+		if (!rows.empty()) {
+			rows += ", ";
+		}
+		rows += "(" + QuoteLiteral(name) + ", " + (has_left ? QuoteLiteral(left_type) : string("NULL")) + ", " +
+		        (has_right ? QuoteLiteral(right_type) : string("NULL")) + ", " + QuoteLiteral(status) + ")";
+	};
+
+	case_insensitive_set_t seen;
+	for (idx_t i = 0; i < ls.names.size(); i++) {
+		seen.insert(ls.names[i]);
+		string lt = ls.types[i].ToString();
+		auto r_it = rmap.find(ls.names[i]);
+		if (r_it == rmap.end()) {
+			add_row(ls.names[i], lt, true, "", false, "left_only");
+		} else {
+			string rt = r_it->second.ToString();
+			add_row(ls.names[i], lt, true, rt, true, lt == rt ? "matched" : "type_differs");
+		}
+	}
+	for (idx_t i = 0; i < rs.names.size(); i++) {
+		if (seen.find(rs.names[i]) != seen.end()) {
+			continue;
+		}
+		add_row(rs.names[i], "", false, rs.types[i].ToString(), true, "right_only");
+	}
+
+	string sql;
+	if (rows.empty()) {
+		sql = "SELECT NULL::VARCHAR AS column_name, NULL::VARCHAR AS left_type, NULL::VARCHAR AS right_type, "
+		      "NULL::VARCHAR AS status WHERE false";
+	} else {
+		sql = "SELECT * FROM (VALUES " + rows + ") AS t(column_name, left_type, right_type, status)";
+	}
+	return ParseSubquery(context, sql);
+}
+
 //===--------------------------------------------------------------------===//
 // Registration
 //===--------------------------------------------------------------------===//
@@ -587,6 +643,10 @@ void LoadInternal(ExtensionLoader &loader) {
 	AddDiffParameters(table_diff_summary);
 	loader.RegisterFunction(table_diff_summary);
 
+	TableFunction schema_diff("schema_diff", {LogicalType::VARCHAR, LogicalType::VARCHAR}, nullptr, nullptr);
+	schema_diff.bind_replace = SchemaDiffBindReplace;
+	loader.RegisterFunction(schema_diff);
+
 	// tables_equal: scalar convenience wrapper over table_diff
 	DefaultMacro tables_equal_macro = {
 	    "main",
@@ -602,6 +662,17 @@ void LoadInternal(ExtensionLoader &loader) {
 	    "columns := columns, ignore := ignore) WHERE diff_status <> 'matched')"};
 	auto macro_info = DefaultFunctionGenerator::CreateInternalMacroInfo(tables_equal_macro);
 	loader.RegisterFunction(*macro_info);
+
+	// to_arglist: turn a list of column names into a paste-ready argument
+	// literal, e.g. ['a', 'b'] -> "['a', 'b']" for columns := / ignore := .
+	DefaultMacro to_arglist_macro = {
+	    "main",
+	    "to_arglist",
+	    {"cols", nullptr},
+	    {{nullptr, nullptr}},
+	    "('[' || array_to_string(list_transform(cols, lambda x: '''' || x || ''''), ', ') || ']')"};
+	auto arglist_info = DefaultFunctionGenerator::CreateInternalMacroInfo(to_arglist_macro);
+	loader.RegisterFunction(*arglist_info);
 }
 
 } // namespace

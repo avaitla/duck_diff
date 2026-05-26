@@ -144,3 +144,68 @@ SELECT tables_equal('expected', 'actual', pk := 'id');  -- true / false
 ```
 
 Equivalent to `SELECT count(*) = 0 FROM table_diff(...) WHERE diff_status <> 'matched'`.
+
+---
+
+## `schema_diff`
+
+Compares the **column names and types** of two relations — no rows are read.
+Returns one row per column (union of both schemas).
+
+### Signature
+
+```sql
+schema_diff(left, right) -> TABLE
+```
+
+### Result columns
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `column_name` | VARCHAR | The column name. |
+| `left_type` | VARCHAR | Its type on the left, or NULL if absent there. |
+| `right_type` | VARCHAR | Its type on the right, or NULL if absent there. |
+| `status` | VARCHAR | `matched` (same type both sides), `type_differs`, `left_only`, `right_only`. |
+
+### Examples
+
+```sql
+-- full schema comparison
+FROM schema_diff('orders', 'orders_v2');
+
+-- just the mismatches
+FROM schema_diff('orders', 'orders_v2') WHERE status <> 'matched';
+
+-- do the schemas match at all?
+SELECT count(*) = 0 AS schemas_match
+FROM schema_diff('orders', 'orders_v2') WHERE status <> 'matched';
+```
+
+---
+
+## `to_arglist`
+
+Scalar helper that turns a list of column names into a paste-ready argument
+literal for `columns :=` / `ignore :=`. Combine it with `schema_diff` (or
+`table_diff`'s `diff_columns`) to pivot a result into something you can copy
+straight back into a call.
+
+### Signature
+
+```sql
+to_arglist(cols) -> VARCHAR        -- cols: VARCHAR[]
+```
+
+```sql
+SELECT to_arglist(['a', 'b']);                       -- ['a', 'b']
+
+-- structurally-mismatched columns, ready to drop into ignore :=
+SELECT to_arglist(list(column_name ORDER BY column_name))
+FROM schema_diff('orders', 'orders_v2') WHERE status <> 'matched';
+-- e.g. ['legacy_flag', 'amount']  ->  table_diff(..., ignore := ['legacy_flag','amount'])
+
+-- columns that actually changed in a value diff
+SELECT to_arglist(list(DISTINCT col))
+FROM (SELECT unnest(diff_columns) AS col
+      FROM table_diff('orders','orders_v2', pk := 'id') WHERE diff_status = 'differs');
+```
