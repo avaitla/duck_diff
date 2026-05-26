@@ -486,11 +486,19 @@ unique_ptr<TableRef> TableDiffSummaryBindReplace(ClientContext &context, TableFu
 	plan.has_context = false;
 	plan.wide = false;
 	string inner = BuildDiffSQL(plan, "status", "diff_columns", "diff_data", /*project_keys=*/false);
-	string sql = "SELECT count(*) FILTER (WHERE status = 'matched') AS n_matched, "
+	// counts per status, the total, and each as a percentage of the total
+	// (NULL percentages when there are no rows, to avoid division by zero)
+	string sql = "SELECT n_matched, n_differs, n_left_only, n_right_only, n_total, "
+	             "round(100.0 * n_matched / nullif(n_total, 0), 2) AS pct_matched, "
+	             "round(100.0 * n_differs / nullif(n_total, 0), 2) AS pct_differs, "
+	             "round(100.0 * n_left_only / nullif(n_total, 0), 2) AS pct_left_only, "
+	             "round(100.0 * n_right_only / nullif(n_total, 0), 2) AS pct_right_only FROM ("
+	             "SELECT count(*) FILTER (WHERE status = 'matched') AS n_matched, "
 	             "count(*) FILTER (WHERE status = 'differs') AS n_differs, "
 	             "count(*) FILTER (WHERE status = 'left_only') AS n_left_only, "
-	             "count(*) FILTER (WHERE status = 'right_only') AS n_right_only FROM (" +
-	             inner + ") __d";
+	             "count(*) FILTER (WHERE status = 'right_only') AS n_right_only, "
+	             "count(*) AS n_total FROM (" +
+	             inner + ") __d) __c";
 	return ParseSubquery(context, sql);
 }
 

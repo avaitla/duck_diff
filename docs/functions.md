@@ -112,6 +112,8 @@ Counts per status, one row. Same parameters as `table_diff`.
 | `n_differs` | BIGINT | Keys on both sides, at least one value differs. |
 | `n_left_only` | BIGINT | Keys only in `left`. |
 | `n_right_only` | BIGINT | Keys only in `right`. |
+| `n_total` | BIGINT | Total distinct keys across both sides. |
+| `pct_matched` / `pct_differs` / `pct_left_only` / `pct_right_only` | DOUBLE | Each count as a percentage of `n_total` (rounded to 2 decimals; NULL when there are no rows). |
 
 ```sql
 SELECT * FROM table_diff_summary('snap_a', 'snap_b', pk := 'id');

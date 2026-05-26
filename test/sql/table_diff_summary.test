@@ -31,6 +31,13 @@ FROM table_diff_summary('l', 'r', pk := 'id');
 ----
 2	1	1	1
 
+# total and percentages (of 5 total rows)
+query IRRRR
+SELECT n_total, pct_matched, pct_differs, pct_left_only, pct_right_only
+FROM table_diff_summary('l', 'r', pk := 'id');
+----
+5	40.0	20.0	20.0	20.0
+
 # ----------------------------------------------------------------------------
 # tables_equal: false when anything differs/added/removed
 # ----------------------------------------------------------------------------
