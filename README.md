@@ -27,6 +27,14 @@ FROM table_diff('read_csv(''before.csv'')', 'read_csv(''after.csv'')', pk := 'id
 FROM table_diff('(SELECT * FROM orders WHERE region = ''US'')', 'orders_v2', pk := 'id');
 ```
 
+## Use cases
+
+- **Refactoring SQL** (possibly even onto a new database) and ensuring the
+  results are the same.
+- **Capturing what changed** between snapshots or points in time.
+- **Replication integrity** — spot-check that a replica matches its source, in
+  the spirit of `pt-table-checksum`.
+
 ## Functions
 
 See [docs/functions.md](docs/functions.md) for the full reference.
