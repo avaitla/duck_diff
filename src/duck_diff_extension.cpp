@@ -112,12 +112,21 @@ RelationSchema InspectRelation(ClientContext &context, optional_ptr<Binder> pare
 // Resolved plan: parsed args + reconciled schema
 //===--------------------------------------------------------------------===//
 
+// A context column pulled from both sides. A column may exist on only one side
+// (e.g. under compare := 'intersect'); the missing side renders as NULL.
+struct ContextCol {
+	string name;
+	bool in_left;
+	bool in_right;
+	string type; // SQL type (from whichever side has it), used to cast the absent side's NULL
+};
+
 struct DiffPlan {
 	string left;
 	string right;
-	vector<string> key_cols;     // canonical (left) names, in order
-	vector<string> value_cols;   // compared non-key columns, in order
-	vector<string> context_cols; // pulled from both sides into left_context / right_context
+	vector<string> key_cols;         // canonical (left) names, in order
+	vector<string> value_cols;       // compared non-key columns, in order
+	vector<ContextCol> context_cols; // pulled into left_context / right_context
 	bool has_context = false;
 	bool wide = false; // expand columns (a_left/a_right/a_diff) instead of JSON diff_data
 	string prefix = "diff_";
@@ -179,14 +188,15 @@ DiffPlan ResolvePlan(ClientContext &context, TableFunctionBindInput &input) {
 	if (auto *ign = FindParam(input, "ignore")) {
 		ignore_columns = ValueToStringList(*ign);
 	}
+	vector<string> context_names;
 	bool context_all = false;
 	if (auto *ctx = FindParam(input, "context")) {
-		plan.context_cols = ValueToStringList(*ctx);
+		context_names = ValueToStringList(*ctx);
 		plan.has_context = true;
 		// context := ['*'] -> pull in every non-key column not already compared
-		if (plan.context_cols.size() == 1 && plan.context_cols[0] == "*") {
+		if (context_names.size() == 1 && context_names[0] == "*") {
 			context_all = true;
-			plan.context_cols.clear();
+			context_names.clear();
 		}
 	}
 	if (auto *pre = FindParam(input, "prefix")) {
@@ -285,28 +295,44 @@ DiffPlan ResolvePlan(ClientContext &context, TableFunctionBindInput &input) {
 		}
 	}
 
-	// context := ['*']: every non-key column present in both, excluding the
-	// columns already compared (those are shown via diff_data / wide _diff)
+	// context := ['*']: every non-key column not already compared, from EITHER
+	// side (a column present on only one side shows NULL on the other)
 	if (context_all) {
 		case_insensitive_set_t value_set;
 		for (auto &c : plan.value_cols) {
 			value_set.insert(c);
 		}
+		case_insensitive_set_t seen;
 		for (auto &name : ls.names) {
-			if (key_set.find(name) != key_set.end() || value_set.find(name) != value_set.end()) {
-				continue;
+			if (key_set.find(name) == key_set.end() && value_set.find(name) == value_set.end()) {
+				context_names.push_back(name);
+				seen.insert(name);
 			}
-			if (rmap.find(name) != rmap.end()) {
-				plan.context_cols.push_back(name);
+		}
+		for (auto &name : rs.names) {
+			if (key_set.find(name) == key_set.end() && value_set.find(name) == value_set.end() &&
+			    seen.find(name) == seen.end()) {
+				context_names.push_back(name);
 			}
 		}
 	}
 
-	// context columns are pulled from both sides, so they must exist in both
-	for (auto &c : plan.context_cols) {
-		if (lmap.find(c) == lmap.end() || rmap.find(c) == rmap.end()) {
-			throw BinderException("table_diff: context column \"%s\" must exist in both relations", c);
+	// resolve each context column's presence + type; it must exist on at least
+	// one side (the absent side renders as NULL)
+	for (auto &name : context_names) {
+		auto l_it = lmap.find(name);
+		auto r_it = rmap.find(name);
+		bool in_left = l_it != lmap.end();
+		bool in_right = r_it != rmap.end();
+		if (!in_left && !in_right) {
+			throw BinderException("table_diff: context column \"%s\" does not exist in either relation", name);
 		}
+		ContextCol col;
+		col.name = in_left ? l_it->first : r_it->first;
+		col.in_left = in_left;
+		col.in_right = in_right;
+		col.type = (in_left ? l_it->second : r_it->second).ToString();
+		plan.context_cols.push_back(std::move(col));
 	}
 	return plan;
 }
@@ -315,9 +341,18 @@ DiffPlan ResolvePlan(ClientContext &context, TableFunctionBindInput &input) {
 // SQL generation
 //===--------------------------------------------------------------------===//
 
-// Build a JSON object expression { 'col': <side>."col", ... } from a column
-// list on the given alias (l / r).
-string ContextObject(const string &alias, const vector<string> &cols) {
+// SQL expression for a context column's value on one side: the column if it
+// exists on that side, otherwise a typed NULL.
+string ContextValue(const string &alias, const ContextCol &col, bool is_left) {
+	bool present = is_left ? col.in_left : col.in_right;
+	if (present) {
+		return alias + "." + QuoteIdent(col.name);
+	}
+	return "CAST(NULL AS " + col.type + ")";
+}
+
+// Build a JSON object expression { 'col': <value>, ... } for one side (l / r).
+string ContextObject(const string &alias, const vector<ContextCol> &cols, bool is_left) {
 	if (cols.empty()) {
 		return "CAST('{}' AS JSON)";
 	}
@@ -326,7 +361,7 @@ string ContextObject(const string &alias, const vector<string> &cols) {
 		if (i) {
 			args += ", ";
 		}
-		args += QuoteLiteral(cols[i]) + ", " + alias + "." + QuoteIdent(cols[i]);
+		args += QuoteLiteral(cols[i].name) + ", " + ContextValue(alias, cols[i], is_left);
 	}
 	return "json_object(" + args + ")";
 }
@@ -394,11 +429,11 @@ string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string
 			middle_select += ", r." + q + " AS " + QuoteIdent(c + "_right");
 			middle_select += ", (l." + q + " IS DISTINCT FROM r." + q + ") AS " + QuoteIdent(c + "_diff");
 		}
-		// per context column: <c>_left, <c>_right (no _diff; not compared)
+		// per context column: <c>_left, <c>_right (no _diff; not compared).
+		// A one-sided column renders as a typed NULL on the side it is missing.
 		for (auto &c : plan.context_cols) {
-			string q = QuoteIdent(c);
-			middle_select += ", l." + q + " AS " + QuoteIdent(c + "_left");
-			middle_select += ", r." + q + " AS " + QuoteIdent(c + "_right");
+			middle_select += ", " + ContextValue("l", c, true) + " AS " + QuoteIdent(c.name + "_left");
+			middle_select += ", " + ContextValue("r", c, false) + " AS " + QuoteIdent(c.name + "_right");
 		}
 	} else {
 		// diff_data: JSON of only the differing columns, populated for 'differs' rows
@@ -425,9 +460,9 @@ string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string
 		// side that does not exist for this row
 		if (plan.has_context) {
 			middle_select +=
-			    ", CASE WHEN l.__p THEN " + ContextObject("l", plan.context_cols) + " END AS \"left_context\"";
+			    ", CASE WHEN l.__p THEN " + ContextObject("l", plan.context_cols, true) + " END AS \"left_context\"";
 			middle_select +=
-			    ", CASE WHEN r.__p THEN " + ContextObject("r", plan.context_cols) + " END AS \"right_context\"";
+			    ", CASE WHEN r.__p THEN " + ContextObject("r", plan.context_cols, false) + " END AS \"right_context\"";
 		}
 	}
 
@@ -489,8 +524,8 @@ unique_ptr<TableRef> TableDiffBindReplace(ClientContext &context, TableFunctionB
 			check(c + "_diff");
 		}
 		for (auto &c : plan.context_cols) {
-			check(c + "_left");
-			check(c + "_right");
+			check(c.name + "_left");
+			check(c.name + "_right");
 		}
 	} else {
 		check(diff_data_col);

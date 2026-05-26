@@ -60,3 +60,36 @@ statement error
 SELECT left_context FROM table_diff('cxl', 'cxr', pk := 'id');
 ----
 left_context
+
+# ----------------------------------------------------------------------------
+# context := ['*'] with columns present on only one side: the absent side is
+# NULL (compare := 'intersect' so the differing column sets don't error)
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE osl (id INTEGER, a INTEGER, only_l VARCHAR);
+
+statement ok
+CREATE TABLE osr (id INTEGER, a INTEGER, only_r VARCHAR);
+
+statement ok
+INSERT INTO osl VALUES (1, 10, 'L1'), (2, 20, 'L2');
+
+statement ok
+INSERT INTO osr VALUES (1, 10, 'R1'), (2, 99, 'R2');
+
+query ITIITTTTT
+SELECT id, diff_status, a_left, a_right, a_diff,
+       only_l_left, only_l_right, only_r_left, only_r_right
+FROM table_diff('osl', 'osr', pk := 'id', compare := 'intersect', context := ['*'], wide := true)
+ORDER BY id;
+----
+1	matched	10	10	false	L1	NULL	NULL	R1
+2	differs	20	99	true	L2	NULL	NULL	R2
+
+# JSON mode: the one-sided column shows null in the side that lacks it
+query TT
+SELECT left_context, right_context
+FROM table_diff('osl', 'osr', pk := 'id', compare := 'intersect', context := ['*'])
+WHERE id = 1;
+----
+{"only_l":"L1","only_r":null}	{"only_l":null,"only_r":"R1"}

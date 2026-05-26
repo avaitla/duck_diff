@@ -41,7 +41,7 @@ table_diff(left, right,
 | `columns` | LIST | Restrict the compared (non-key) columns to this list. |
 | `ignore` | LIST | Exclude these columns from comparison. |
 | `prefix` | VARCHAR | Prefix for the meta output columns (default `'diff_'`). |
-| `context` | LIST | Columns pulled from **both** sides into `left_context` / `right_context`. Use `['*']` to pull in every non-key column not already compared — with `wide := true` this gives a full side-by-side of all columns (handy for dashboards). |
+| `context` | LIST | Columns pulled from **both** sides into `left_context` / `right_context`. Use `['*']` to pull in every non-key column not already compared — including columns present on only one side (the other side shows NULL). With `wide := true` this gives a full side-by-side of all columns (handy for dashboards). |
 | `wide` | BOOLEAN | When `true`, expand each compared column into `<c>_left` / `<c>_right` / `<c>_diff` and each context column into `<c>_left` / `<c>_right`, instead of the JSON `diff_data` / `left_context` / `right_context` columns. Native types are preserved as real columns. |
 
 ### Output columns
