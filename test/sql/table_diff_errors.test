@@ -1,0 +1,65 @@
+# name: test/sql/table_diff_errors.test
+# description: table_diff v1 error cases (strict schema, unique keys)
+# group: [duck_diff]
+
+require duck_diff
+
+require json
+
+# ----------------------------------------------------------------------------
+# Schema mismatch -> error (v1 is strict: identical column sets required)
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE a (id INTEGER, x INTEGER);
+
+statement ok
+CREATE TABLE b (id INTEGER, y INTEGER);
+
+statement ok
+INSERT INTO a VALUES (1, 10);
+
+statement ok
+INSERT INTO b VALUES (1, 10);
+
+statement error
+SELECT * FROM table_diff(TABLE a, TABLE b, key := 'id');
+----
+column
+
+# Key column missing from a relation -> error
+statement error
+SELECT * FROM table_diff(TABLE a, TABLE b, key := 'nope');
+----
+key
+
+# ----------------------------------------------------------------------------
+# Duplicate primary keys -> error (key must be unique on both sides)
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE dl (id INTEGER, v INTEGER);
+
+statement ok
+CREATE TABLE dr (id INTEGER, v INTEGER);
+
+statement ok
+INSERT INTO dl VALUES (1, 1), (1, 2);
+
+statement ok
+INSERT INTO dr VALUES (1, 1);
+
+statement error
+SELECT * FROM table_diff(TABLE dl, TABLE dr, key := 'id');
+----
+duplicate
+
+# Duplicate on the right side is also an error
+statement ok
+DELETE FROM dl WHERE v = 2;
+
+statement ok
+INSERT INTO dr VALUES (1, 9);
+
+statement error
+SELECT * FROM table_diff(TABLE dl, TABLE dr, key := 'id');
+----
+duplicate
