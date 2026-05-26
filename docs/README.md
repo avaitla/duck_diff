@@ -80,15 +80,20 @@ GEN=ninja make
 ## Running the extension
 To run the extension code, simply start the shell with `./build/release/duckdb`. This shell will have the extension pre-loaded.  
 
-Now we can use the features from the extension directly in DuckDB. The template contains a single scalar function `waddle()` that takes a string arguments and returns a string:
+Now we can use the features from the extension directly in DuckDB. See
+[functions.md](functions.md) for the full reference. For example:
 ```
-D select waddle('Jane') as result;
-┌───────────────┐
-│    result     │
-│    varchar    │
-├───────────────┤
-│ Quack Jane 🐥 │
-└───────────────┘
+D CREATE TABLE l AS SELECT * FROM (VALUES (1,'a'),(2,'b')) t(id,v);
+D CREATE TABLE r AS SELECT * FROM (VALUES (1,'a'),(2,'B'),(3,'c')) t(id,v);
+D FROM table_diff(TABLE l, TABLE r, key := 'id') ORDER BY pk_id;
+┌───────┬────────────┬───────────────────────────────┐
+│ pk_id │   status   │             diff              │
+│ int32 │  varchar   │             json              │
+├───────┼────────────┼───────────────────────────────┤
+│   1   │ matched    │ NULL                          │
+│   2   │ differs    │ {"v":{"left":"b","right":"B"}}│
+│   3   │ right_only │ NULL                          │
+└───────┴────────────┴───────────────────────────────┘
 ```
 
 ## Running the tests
