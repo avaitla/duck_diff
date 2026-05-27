@@ -7,28 +7,6 @@ exactly which columns changed. It also supports a composite primary key,
 selecting a subset of columns to diff or ignore in diffing, and formatting as json 
 columns or wide typed columns.
 
-```sql
-LOAD duck_diff;
-
-FROM table_diff('orders_before', 'orders_after', pk := 'order_id');
-```
-
-| order_id | diff_status | diff_data |
-|----------|-------------|-----------|
-| 1 | matched | NULL |
-| 3 | left_only | NULL |
-| 5 | differs | `{"amount":{"left":10,"right":12}}` |
-| 7 | right_only | NULL |
-
-The two relations are passed as **strings** — anything valid after `FROM`: a
-table/view name, a table function, or a parenthesized subquery. So named tables,
-CSV/Parquet, and ad-hoc queries all work:
-
-```sql
-FROM table_diff('read_csv(''before.csv'')', 'read_csv(''after.csv'')', pk := 'id');
-FROM table_diff('(SELECT * FROM orders WHERE region = ''US'')', 'orders_v2', pk := 'id');
-```
-
 ## Quick start
 
 Get a DuckDB shell with `duck_diff` loaded (see [Building](#building)), then
