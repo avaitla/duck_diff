@@ -184,10 +184,3 @@ FROM table_diff('a', 'b', pk := 'id');
 > SET allow_unsigned_extensions = true;
 > INSTALL duck_diff; LOAD duck_diff;
 > ```
-
-## Status
-
-Single relation argument per DuckDB's table-function limit drives the
-string-argument design (same pattern as the built-in `query()` /
-`query_table()`). See [docs/DESIGN.md](docs/DESIGN.md) for the full design and
-rationale.
