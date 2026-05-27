@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # write release notes / upload checksum asset
   pages: write
   id-token: write
 
@@ -95,6 +95,15 @@ jobs:
           rm -f private.pem
           printf 'duck_diff extension repository (DuckDB %s)\n' "$DUCKDB_VERSION" > _site/index.html
 
+      - name: Compute checksums and provenance
+        run: |
+          set -euo pipefail
+          ( cd _site && find . -name '*.duckdb_extension.gz' | sort | sed 's|^\./||' \
+              | xargs sha256sum > SHA256SUMS )
+          echo "${GITHUB_SHA}" > _site/COMMIT
+          echo "=== SHA256SUMS ==="; cat _site/SHA256SUMS
+          echo "=== built from commit ${GITHUB_SHA} ==="
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -103,3 +112,40 @@ jobs:
       - id: deploy
         name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
+
+      - name: Attach checksums and provenance to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" _site/SHA256SUMS --clobber
+          {
+            echo "First release of **duck_diff** — a DuckDB extension for diffing two relations on a primary key."
+            echo
+            echo "**Functions:** \`table_diff\`, \`table_diff_summary\`, \`tables_equal\`, \`schema_diff\`."
+            echo
+            echo "### Install"
+            echo
+            echo "Binaries are signed with a third-party key, so launch DuckDB with \`-unsigned\`:"
+            echo
+            echo '```sh'
+            echo 'duckdb -unsigned'
+            echo '```'
+            echo '```sql'
+            echo "SET custom_extension_repository = 'https://${GITHUB_REPOSITORY_OWNER}.github.io/${EXTENSION_NAME}';"
+            echo 'INSTALL duck_diff;'
+            echo 'LOAD duck_diff;'
+            echo '```'
+            echo
+            echo "### Provenance & integrity"
+            echo
+            echo "Built for **DuckDB ${DUCKDB_VERSION}** from commit \`${GITHUB_SHA}\`."
+            echo "Verify a download against the public key (\`duck_diff-signing-key.pub\`) — see [docs/DISTRIBUTION.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/DISTRIBUTION.md). SHA256 of each published binary:"
+            echo
+            echo '```'
+            cat _site/SHA256SUMS
+            echo '```'
+          } > notes.md
+          gh release edit "$TAG" --notes-file notes.md
