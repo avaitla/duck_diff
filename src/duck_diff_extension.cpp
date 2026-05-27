@@ -141,9 +141,9 @@ struct DiffPlan {
 	vector<ContextCol> context_cols; // extra non-compared columns expanded as <c>_left/<c>_right
 	string prefix = "diff_";
 	// value-normalization flags (applied to compared columns, not keys)
-	bool has_tolerance = false;   // numeric_tolerance: |l-r| <= tolerance counts as equal
-	string tolerance_sql;         // the tolerance as a SQL literal
-	string timestamp_precision;   // date_trunc part applied to timestamp columns ("" = off)
+	bool has_tolerance = false;     // numeric_tolerance: |l-r| <= tolerance counts as equal
+	string tolerance_sql;           // the tolerance as a SQL literal
+	string timestamp_precision;     // date_trunc part applied to timestamp columns ("" = off)
 	bool null_equals_empty = false; // treat NULL and '' as equal for VARCHAR columns
 };
 
@@ -337,11 +337,10 @@ DiffPlan ResolvePlan(ClientContext &context, TableFunctionBindInput &input) {
 				}
 			} else {
 				if (require_matching) {
-					throw BinderException(
-					    "table_diff: column \"%s\" has type %s on the left but %s on the right "
-					    "(set upcast_types := true to compare via their common type, or "
-					    "require_matching_columns := false to skip the column)",
-					    c, l_it->second.ToString(), r_it->second.ToString());
+					throw BinderException("table_diff: column \"%s\" has type %s on the left but %s on the right "
+					                      "(set upcast_types := true to compare via their common type, or "
+					                      "require_matching_columns := false to skip the column)",
+					                      c, l_it->second.ToString(), r_it->second.ToString());
 				}
 				continue; // drop the type-mismatched column
 			}
@@ -513,8 +512,8 @@ string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string
 			          ", json_object('left', l." + q + ", 'right', r." + q + ")) ELSE CAST('{}' AS JSON) END";
 		}
 		// seed with an empty object so json_merge_patch always has >= 2 args
-		diff_expr = "CASE WHEN l.__p AND r.__p AND NOT (" + all_eq +
-		            ") THEN json_merge_patch(CAST('{}' AS JSON), " + merges + ") END";
+		diff_expr = "CASE WHEN l.__p AND r.__p AND NOT (" + all_eq + ") THEN json_merge_patch(CAST('{}' AS JSON), " +
+		            merges + ") END";
 	}
 
 	// one table: the diff_data JSON, then per compared column <c>_left / <c>_right
@@ -550,9 +549,9 @@ string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string
 	                  "EXISTS (SELECT 1 FROM __r GROUP BY " + key_list + " HAVING count(*) > 1)";
 
 	string sql = "WITH __l AS (SELECT __t.*, TRUE AS __p FROM (" + plan.left + ") __t), " +
-	             "__r AS (SELECT __t.*, TRUE AS __p FROM (" + plan.right + ") __t) " + "SELECT " +
-	             key_select + "CASE WHEN r.__p IS NULL THEN 'left_only' WHEN l.__p IS NULL THEN 'right_only' WHEN " +
-	             all_eq + " THEN 'identical' ELSE 'different' END AS " + QuoteIdent(status_col) + middle_select +
+	             "__r AS (SELECT __t.*, TRUE AS __p FROM (" + plan.right + ") __t) " + "SELECT " + key_select +
+	             "CASE WHEN r.__p IS NULL THEN 'left_only' WHEN l.__p IS NULL THEN 'right_only' WHEN " + all_eq +
+	             " THEN 'identical' ELSE 'different' END AS " + QuoteIdent(status_col) + middle_select +
 	             " FROM __l AS l FULL OUTER JOIN __r AS r ON " + join_cond + " WHERE (CASE WHEN " + dup_cond +
 	             " THEN error('table_diff: duplicate primary key values found in input') END) IS NULL";
 	return sql;
