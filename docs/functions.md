@@ -144,3 +144,62 @@ SELECT tables_equal('expected', 'actual', pk := 'id');  -- true / false
 ```
 
 Equivalent to `SELECT count(*) = 0 FROM table_diff(...) WHERE diff_status <> 'matched'`.
+
+---
+
+## `schema_diff`
+
+Compares the **column names and types** of two relations — no rows are read.
+Returns one row per column (union of both schemas).
+
+### Signature
+
+```sql
+schema_diff(left, right) -> TABLE
+```
+
+### Result columns
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `column_name` | VARCHAR | The column name. |
+| `left_type` | VARCHAR | Its type on the left, or NULL if absent there. |
+| `right_type` | VARCHAR | Its type on the right, or NULL if absent there. |
+| `status` | VARCHAR | `matched` (same type both sides), `type_differs`, `left_only`, `right_only`. |
+
+### Examples
+
+```sql
+-- full schema comparison
+FROM schema_diff('orders', 'orders_v2');
+
+-- just the mismatches
+FROM schema_diff('orders', 'orders_v2') WHERE status <> 'matched';
+
+-- do the schemas match at all?
+SELECT count(*) = 0 AS schemas_match
+FROM schema_diff('orders', 'orders_v2') WHERE status <> 'matched';
+```
+
+---
+
+## Building a `columns` / `ignore` list from a query
+
+`columns` / `ignore` take a list, and a named argument can't contain a subquery,
+but you can compute the list once into a **variable** and pass it with
+`getvariable(...)` — no string juggling:
+
+```sql
+-- ignore the columns whose name/type don't match between the two relations
+SET VARIABLE mismatch = (
+  SELECT list(column_name) FROM schema_diff('orders', 'orders_v2') WHERE status <> 'matched'
+);
+FROM table_diff('orders', 'orders_v2', pk := 'id', ignore := getvariable('mismatch'));
+
+-- or pick columns straight from a relation's schema (DESCRIBE)
+SET VARIABLE numeric_cols = (
+  SELECT list(column_name) FROM (DESCRIBE SELECT * FROM orders)
+  WHERE column_name <> 'id' AND column_type IN ('INTEGER','BIGINT','DOUBLE','DECIMAL')
+);
+FROM table_diff('orders', 'orders_v2', pk := 'id', columns := getvariable('numeric_cols'));
+```

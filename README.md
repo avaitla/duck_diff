@@ -47,8 +47,9 @@ See [docs/functions.md](docs/functions.md) for the full reference.
 | Function | Returns | Purpose |
 |----------|---------|---------|
 | `table_diff(left, right, pk := …)` | table | one row per key: key column(s), `diff_status`, `diff_data` |
-| `table_diff_summary(left, right, pk := …)` | one row | counts per status |
+| `table_diff_summary(left, right, pk := …)` | one row | counts (and percentages) per status |
 | `tables_equal(left, right, pk := …)` | BOOLEAN | true iff every key matched |
+| `schema_diff(left, right)` | table | per-column name/type comparison: `column_name`, `left_type`, `right_type`, `status` |
 
 ## Key features
 
@@ -72,6 +73,15 @@ See [docs/functions.md](docs/functions.md) for the full reference.
   side-by-side of all columns for dashboards.
 - **Collisions**: meta columns default to a `diff_` prefix; override with
   `prefix := 'cmp_'` if a key column would clash.
+- **Schema diff + reuse**: `schema_diff('a','b')` reports per-column name/type
+  matches. Feed the result straight into a diff via a variable (a named argument
+  can't hold a subquery, so capture the list and pass `getvariable`):
+  ```sql
+  SET VARIABLE mismatch = (
+    SELECT list(column_name) FROM schema_diff('a','b') WHERE status <> 'matched'
+  );
+  FROM table_diff('a','b', pk := 'id', ignore := getvariable('mismatch'));
+  ```
 
 ## Diffing external sources (BigQuery, Postgres, CSV, …)
 

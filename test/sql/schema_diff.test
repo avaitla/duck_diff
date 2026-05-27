@@ -1,0 +1,65 @@
+# name: test/sql/schema_diff.test
+# description: schema_diff -- compare column names and types of two relations
+# group: [sql]
+
+require duck_diff
+
+require json
+
+statement ok
+CREATE TABLE sdl (id INTEGER, a INTEGER, b VARCHAR, only_l INTEGER);
+
+statement ok
+CREATE TABLE sdr (id INTEGER, a BIGINT, b VARCHAR, only_r DATE);
+
+# ----------------------------------------------------------------------------
+# one row per column (union), with each side's type and a status
+#   id     INTEGER/INTEGER -> matched
+#   a      INTEGER/BIGINT  -> type_differs
+#   b      VARCHAR/VARCHAR -> matched
+#   only_l INTEGER/-       -> left_only
+#   only_r -/DATE          -> right_only
+# ----------------------------------------------------------------------------
+query TTTT
+SELECT column_name, left_type, right_type, status FROM schema_diff('sdl', 'sdr')
+ORDER BY column_name;
+----
+a	INTEGER	BIGINT	type_differs
+b	VARCHAR	VARCHAR	matched
+id	INTEGER	INTEGER	matched
+only_l	INTEGER	NULL	left_only
+only_r	NULL	DATE	right_only
+
+# quick "do the schemas match?" check
+query I
+SELECT count(*) FROM schema_diff('sdl', 'sdr') WHERE status <> 'matched';
+----
+3
+
+# identical schema -> everything matches
+query I
+SELECT count(*) FROM schema_diff('sdl', 'sdl') WHERE status <> 'matched';
+----
+0
+
+# works on any relation expression (subquery), not just tables
+query TTTT
+SELECT column_name, left_type, right_type, status
+FROM schema_diff('(SELECT 1 AS id, 2 AS a)', '(SELECT 1 AS id, ''x'' AS a)')
+ORDER BY column_name;
+----
+a	INTEGER	VARCHAR	type_differs
+id	INTEGER	INTEGER	matched
+
+# capture mismatched columns into a variable and feed them straight to a diff
+# (no string juggling: list(...) -> variable -> getvariable in columns/ignore)
+statement ok
+SET VARIABLE mismatch = (
+  SELECT list(column_name ORDER BY column_name)
+  FROM schema_diff('sdl', 'sdr') WHERE status <> 'matched'
+);
+
+query T
+SELECT getvariable('mismatch');
+----
+[a, only_l, only_r]
