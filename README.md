@@ -195,14 +195,12 @@ LOAD 'build/release/extension/duck_diff/duck_diff.duckdb_extension';
 FROM table_diff('a', 'b', pk := 'id');
 ```
 
-> **Installing without building:** `INSTALL` needs prebuilt, per-platform
-> binaries — you can't `INSTALL` straight from this source repo. Cutting a
-> GitHub Release builds, signs, and publishes them to GitHub Pages (see
-> [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)). The binaries are signed with a
-> third-party key, so launch DuckDB with `-unsigned` (it's a startup flag, not a
-> `SET`), then:
+> **Installing without building:** each [GitHub Release](https://github.com/avaitla/duck_diff/releases)
+> attaches signed, per-platform `.duckdb_extension` binaries (see
+> [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)). Download the one for your
+> platform and load it (signed with a third-party key, so launch with
+> `-unsigned` — a startup flag, not a `SET`):
 > ```sql
-> -- newest release, or pin one with .../duck_diff/v0.1.0
-> SET custom_extension_repository = 'https://avaitla.github.io/duck_diff/latest';
-> INSTALL duck_diff; LOAD duck_diff;
+> -- duckdb -unsigned
+> LOAD '/path/to/duck_diff-v1.5.2-osx_arm64.duckdb_extension';
 > ```

@@ -1,20 +1,17 @@
-# Distribution — signed binaries on GitHub Pages
+# Distribution — signed binaries on GitHub Releases
 
 `.github/workflows/Release.yml` builds `duck_diff` for every native platform on
-each GitHub Release, signs each binary, and publishes them to GitHub Pages as a
-DuckDB extension repository:
+each GitHub Release, signs each binary, and attaches the signed
+`.duckdb_extension` files (plus `SHA256SUMS`) to the release as assets.
 
-```
-https://<owner>.github.io/duck_diff/<duckdb_version>/<platform>/duck_diff.duckdb_extension.gz
-```
+Users download the file for their platform and `LOAD` it — there is no
+`INSTALL … FROM` (that would require a hosted extension repository); this is the
+simpler, fully self-contained route.
 
-Users install without building (see [Installing](#installing-as-a-user)).
-
-> **Note on signing.** Stock DuckDB only trusts DuckDB's own key, so an extension
-> signed with *your* key still requires `allow_unsigned_extensions = true`. The
-> signature here provides integrity/provenance, not flag-free loading. The only
-> way to drop that flag is the DuckDB community-extensions pipeline (which signs
-> with DuckDB's key after a review).
+> **Signing note.** Stock DuckDB only trusts DuckDB's own key, so a binary
+> signed with *your* key still requires `allow_unsigned_extensions` (the
+> `-unsigned` launch flag). The signature provides integrity/provenance, not
+> flag-free loading.
 
 ## One-time setup
 
@@ -22,127 +19,58 @@ Users install without building (see [Installing](#installing-as-a-user)).
 
 ```sh
 openssl genrsa -out private.pem 2048
-openssl rsa -in private.pem -pubout -out public.pem   # keep for verification; optional
+openssl rsa -in private.pem -pubout -out duck_diff-signing-key.pub   # public half (committed)
 ```
-Keep `private.pem` **out of the repo** (it's the secret). `public.pem` is safe to
-share if you want consumers to be able to verify signatures.
+Keep `private.pem` out of the repo.
 
 ### 2. Store the private key as a repository secret
 
-GitHub → repo **Settings → Secrets and variables → Actions → New repository
-secret**:
+GitHub → **Settings → Secrets and variables → Actions → New repository secret**:
 
 - **Name:** `DUCKDB_EXTENSION_SIGNING_PK`
-- **Value:** the full contents of `private.pem` (including the
-  `-----BEGIN/END …-----` lines)
+- **Value:** the full contents of `private.pem`
 
-If the secret is absent the workflow still publishes, just with an unsigned
-(zeroed) signature slot.
-
-### 3. Enable GitHub Pages from Actions
-
-GitHub → repo **Settings → Pages → Build and deployment → Source = GitHub
-Actions**.
-
-### 4. Allow release tags to deploy
-
-The `github-pages` environment only permits deployments from the default branch
-by default — but releases run on a **tag** ref, so the deploy is rejected at the
-environment gate (the job fails in ~2s with no steps). Add a tag policy so `v*`
-tags may deploy:
-
-```sh
-gh api -X POST repos/<owner>/duck_diff/environments/github-pages/deployment-branch-policies \
-  -f name='v*' -f type='tag'
-```
-(Or **Settings → Environments → github-pages → Deployment branches and tags →
-Add → Tag → `v*`**.)
+If the secret is absent the workflow still attaches binaries, just with an
+unsigned (zeroed) signature slot.
 
 ## Releasing a new version
 
-Once the one-time setup above is done, every release is just a tag:
-
 ```sh
-# 1. land your changes on main (PR or push), then:
 git checkout main && git pull
-# 2. cut a release with the next version tag
 gh release create v0.2.0 --target main --title "duck_diff v0.2.0" --notes "see workflow"
 ```
 
-Publishing the release fires `Release.yml`, which:
+Publishing the release fires `Release.yml`, which builds every platform, signs
+each binary, attaches them as `duck_diff-<duckdb_version>-<platform>.duckdb_extension`
++ `SHA256SUMS`, and rewrites the release notes with install instructions, the
+source commit, and the checksums.
 
-1. builds `duck_diff` for every platform against the pinned DuckDB version;
-2. signs each binary (overwriting its 256-byte signature slot) with the
-   `DUCKDB_EXTENSION_SIGNING_PK` secret;
-3. signs each binary (overwriting its 256-byte signature slot) with the
-   `DUCKDB_EXTENSION_SIGNING_PK` secret;
-4. accumulates the build onto the **`gh-pages` branch** under `<tag>/…` and
-   refreshes `latest/…` (old versions stay live), then deploys the full tree;
-5. attaches `SHA256SUMS` to the release and rewrites the notes with the exact
-   commit hash and per-binary checksums.
-
-So `…/duck_diff/<tag>` pins a release and `…/duck_diff/latest` tracks newest;
-nothing to clean up between releases.
-
-> **Version tags** set the extension version; use SemVer-ish tags (`v0.2.0`).
-> The **DuckDB** target is pinned separately in `Release.yml` and
-> `MainDistributionPipeline.yml` (`DUCKDB_VERSION` / `duckdb_version`) — bump
-> those together only when moving to a new DuckDB release.
->
-> The `gh-pages` branch is the accumulating store; the deploy publishes its full
-> contents each run, so every previously released version remains installable.
->
-> `workflow_dispatch` runs the build/publish manually (publishing under the
-> branch name), but it won't rewrite release notes (that step only runs on a
-> real release event).
+> **Version tags** (`v0.2.0`) name the release. The **DuckDB** target is pinned
+> in `Release.yml` and `MainDistributionPipeline.yml` (`DUCKDB_VERSION` /
+> `duckdb_version`) — bump those together when moving to a new DuckDB release.
+> `workflow_dispatch` runs the build/sign manually but won't touch release notes.
 
 ## Installing (as a user)
 
-DuckDB version and platform must match a published build. `allow_unsigned_extensions`
-is a **startup flag**, not a runtime `SET` — launch DuckDB with `-unsigned`
-(CLI) or `config={'allow_unsigned_extensions': True}` (client libraries):
-
-Each release is published under its version tag and mirrored to `latest`:
-
-- pin a release: `https://<owner>.github.io/duck_diff/v0.1.0`
-- always newest: `https://<owner>.github.io/duck_diff/latest`
+Download the `*.duckdb_extension` matching your DuckDB version and platform from
+the release assets, then load it (it's signed with a third-party key, so launch
+with `-unsigned`):
 
 ```sh
 duckdb -unsigned
 ```
 ```sql
-SET custom_extension_repository = 'https://<owner>.github.io/duck_diff/latest';
-INSTALL duck_diff;
-LOAD duck_diff;
-
+LOAD '/path/to/duck_diff-v1.5.2-osx_arm64.duckdb_extension';
 FROM table_diff('a', 'b', pk := 'id');
 ```
-
-(DuckDB appends `/<duckdb_version>/<platform>/…` automatically, so the base URL
-ends at the version or `latest` — never include the DuckDB version yourself.)
+From a client library, enable unsigned extensions in the connection config (e.g.
+Python: `duckdb.connect(config={'allow_unsigned_extensions': True})`).
 
 ## Verifying a download
 
-Every release publishes, alongside the binaries:
-
-- **`SHA256SUMS`** — the SHA256 of each `*.duckdb_extension.gz`, at
-  `https://<owner>.github.io/duck_diff/SHA256SUMS`, attached to the GitHub
-  Release, and inlined in the release notes;
-- **`COMMIT`** — the source commit the build came from
-  (`https://<owner>.github.io/duck_diff/COMMIT`), also stated in the notes.
-
-These are generated by the release workflow, so the notes always carry the exact
-commit and per-binary hashes for the build that produced them.
-
-**Quick checksum check** of a download:
-
-```sh
-curl -sO https://<owner>.github.io/duck_diff/SHA256SUMS
-sha256sum -c SHA256SUMS        # for the files you downloaded into the same layout
-```
-
-**Signature check.** The binaries are signed with the key whose public half is
-committed at [`duck_diff-signing-key.pub`](../duck_diff-signing-key.pub):
+Each release ships `SHA256SUMS` (also inlined in the notes) and is signed with
+the key whose public half is committed at
+[`duck_diff-signing-key.pub`](../duck_diff-signing-key.pub):
 
 ```
 -----BEGIN PUBLIC KEY-----
@@ -156,25 +84,24 @@ cRhjdKXyVWVNBehqHLd9hV7i44Gt2RDBrrPWDKgEPblajXpyz3EOTeYG3rmLDDgb
 -----END PUBLIC KEY-----
 ```
 
-A DuckDB extension's signature is the **last 256 bytes**; the signed payload is
-the SHA256 composite of everything before it (1 MiB chunks each hashed, then the
-concatenation hashed — DuckDB's `compute-extension-hash.sh`). To verify a
-downloaded binary:
+**Checksum:**
+```sh
+sha256sum -c SHA256SUMS   # with the downloaded files in the same directory
+```
+
+**Signature.** The signature is the file's **last 256 bytes**; the signed
+payload is the SHA256 composite of everything before it (1 MiB chunks each
+hashed, then the concatenation hashed — DuckDB's `compute-extension-hash.sh`):
 
 ```sh
-# fetch + decompress one platform build
-curl -sL https://<owner>.github.io/duck_diff/v1.5.2/<platform>/duck_diff.duckdb_extension.gz \
-  | gunzip > duck_diff.duckdb_extension
-
-size=$(wc -c < duck_diff.duckdb_extension)
-head -c $((size - 256)) duck_diff.duckdb_extension > body
-tail -c 256             duck_diff.duckdb_extension > sig
-
+F=duck_diff-v1.5.2-osx_arm64.duckdb_extension
+size=$(wc -c < "$F")
+head -c $((size - 256)) "$F" > body
+tail -c 256             "$F" > sig
 : > chunks
 split -b 1M body seg_
 for f in seg_*; do openssl dgst -binary -sha256 "$f" >> chunks; rm "$f"; done
 openssl dgst -binary -sha256 chunks > hash
-
 openssl pkeyutl -verify -pubin -inkey duck_diff-signing-key.pub \
   -sigfile sig -in hash -pkeyopt digest:sha256
 # -> Signature Verified Successfully

@@ -1,16 +1,13 @@
 #
-# Builds duck_diff for all platforms on a GitHub Release, signs each binary with
-# a private key (stored as the DUCKDB_EXTENSION_SIGNING_PK secret), and publishes
-# them to GitHub Pages laid out as a DuckDB extension repository:
+# On a GitHub Release, builds duck_diff for all native platforms, signs each
+# binary with the DUCKDB_EXTENSION_SIGNING_PK secret, and attaches the signed
+# .duckdb_extension files (plus SHA256SUMS) to the release as assets.
 #
-#   <pages-url>/<duckdb_version>/<platform>/duck_diff.duckdb_extension.gz
+# Users download the file for their platform and load it:
+#   duckdb -unsigned
+#   LOAD '/path/to/duck_diff-<duckdb_version>-<platform>.duckdb_extension';
 #
-# Users then install with:
-#   SET custom_extension_repository = '<pages-url>';
-#   SET allow_unsigned_extensions = true;   -- third-party key, not DuckDB's
-#   INSTALL duck_diff; LOAD duck_diff;
-#
-name: Release (signed, GitHub Pages)
+name: Release (signed binaries)
 
 on:
   release:
@@ -18,13 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # write release notes / upload checksum asset
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
+  contents: write
 
 env:
   DUCKDB_VERSION: v1.5.2
@@ -38,16 +29,12 @@ jobs:
       duckdb_version: v1.5.2
       ci_tools_version: v1.5-variegata
       extension_name: duck_diff
-      # wasm uses a different signature layout; skip it for the self-hosted repo
       exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads'
 
   publish:
-    name: Sign and publish to GitHub Pages
+    name: Sign and attach to the release
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - name: Download all built extensions
         uses: actions/download-artifact@v4
@@ -55,7 +42,7 @@ jobs:
           path: artifacts
           pattern: ${{ env.EXTENSION_NAME }}-*-extension-*
 
-      - name: Sign each binary into a build tree
+      - name: Sign each binary
         env:
           DUCKDB_EXTENSION_SIGNING_PK: ${{ secrets.DUCKDB_EXTENSION_SIGNING_PK }}
         run: |
@@ -64,14 +51,15 @@ jobs:
           if [ -n "${DUCKDB_EXTENSION_SIGNING_PK:-}" ]; then
             printf '%s' "$DUCKDB_EXTENSION_SIGNING_PK" > private.pem
           fi
+          mkdir -p dist
           for dir in artifacts/${EXTENSION_NAME}-*-extension-*; do
             arch="${dir##*-extension-}"
             src="$dir/${EXTENSION_NAME}.duckdb_extension"
             if [ ! -f "$src" ]; then
               echo "skip: no extension in $dir"; continue
             fi
-            # the built extension already ends in a 256-byte signature slot;
-            # sign the body (everything before it) and overwrite that slot.
+            # the built extension ends in a 256-byte signature slot; sign the
+            # body and overwrite that slot (the result stays a loadable file).
             size=$(wc -c < "$src")
             body=$((size - 256))
             head -c "$body" "$src" > body.bin
@@ -86,81 +74,23 @@ jobs:
               : > ext.sign   # no key -> leave an empty (zeroed) signature slot
             fi
             truncate -s 256 ext.sign
-            mkdir -p "build_tree/${DUCKDB_VERSION}/${arch}"
-            cat body.bin ext.sign | gzip > "build_tree/${DUCKDB_VERSION}/${arch}/${EXTENSION_NAME}.duckdb_extension.gz"
+            cat body.bin ext.sign > "dist/${EXTENSION_NAME}-${DUCKDB_VERSION}-${arch}.duckdb_extension"
             rm -f body.bin ext.hash ext.sign
-            echo "signed ${DUCKDB_VERSION}/${arch}"
+            echo "signed ${arch}"
           done
           rm -f private.pem
-          ( cd build_tree && find . -name '*.duckdb_extension.gz' | sort | sed 's|^\./||' \
-              | xargs sha256sum > SHA256SUMS )
-          echo "${GITHUB_SHA}" > build_tree/COMMIT
-          echo "=== SHA256SUMS ==="; cat build_tree/SHA256SUMS
+          ( cd dist && sha256sum * > SHA256SUMS )
+          echo "=== SHA256SUMS ==="; cat dist/SHA256SUMS
 
-      - name: Accumulate into the gh-pages store (versioned + latest) and assemble the site
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VER: ${{ github.event.release.tag_name || github.ref_name }}
-        run: |
-          set -euo pipefail
-          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
-          REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git"
-          rm -rf store
-          if git clone --quiet --depth 1 --branch gh-pages "$REPO_URL" store 2>/dev/null; then
-            echo "cloned existing gh-pages store"
-          else
-            echo "initializing new gh-pages store"
-            mkdir store
-            ( cd store && git init -q && git remote add origin "$REPO_URL" && git checkout -q --orphan gh-pages )
-          fi
-          # publish this build under its version tag and refresh 'latest'
-          rm -rf "store/${VER}" "store/latest"
-          mkdir -p "store/${VER}" "store/latest"
-          cp -R build_tree/. "store/${VER}/"
-          cp -R build_tree/. "store/latest/"
-          # simple index listing the available versions
-          ( cd store
-            {
-              echo "<h1>duck_diff extension repository</h1><ul>"
-              echo "<li><a href=\"latest/\">latest</a></li>"
-              for d in */ ; do d="${d%/}"; [ "$d" = "latest" ] && continue; echo "<li><a href=\"$d/\">$d</a></li>"; done | sort -r
-              echo "</ul>"
-            } > index.html )
-          ( cd store
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git commit -q -m "Publish ${VER} (DuckDB ${DUCKDB_VERSION}, ${GITHUB_SHA})" || echo "nothing to commit"
-            git push -q origin gh-pages )
-          # deploy the full accumulated tree (all versions + latest)
-          rm -rf _site && mkdir _site && cp -R store/. _site/ && rm -rf _site/.git
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-
-      - id: deploy
-        name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
-
-      - name: Attach checksums and provenance to the release
+      - name: Attach signed binaries and notes to the release
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}   # gh has no checkout to infer the repo from
+          GH_REPO: ${{ github.repository }}   # no checkout, so gh can't infer the repo
           TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          # attach the signed per-platform binaries (flat names) + the checksums
-          for f in build_tree/${DUCKDB_VERSION}/*/${EXTENSION_NAME}.duckdb_extension.gz; do
-            arch=$(basename "$(dirname "$f")")
-            asset="${EXTENSION_NAME}-${DUCKDB_VERSION}-${arch}.duckdb_extension.gz"
-            cp "$f" "$asset"
-            gh release upload "$TAG" "$asset" --clobber
-          done
-          gh release upload "$TAG" build_tree/SHA256SUMS --clobber
-          BASE="https://${GITHUB_REPOSITORY_OWNER}.github.io/${EXTENSION_NAME}"
+          gh release upload "$TAG" dist/* --clobber
           {
             echo "**duck_diff** — a DuckDB extension for diffing two relations on a primary key."
             echo
@@ -168,27 +98,24 @@ jobs:
             echo
             echo "### Install"
             echo
-            echo "Binaries are signed with a third-party key, so launch DuckDB with \`-unsigned\`:"
+            echo "Download the \`*.duckdb_extension\` for your platform from the assets below, then:"
             echo
             echo '```sh'
             echo 'duckdb -unsigned'
             echo '```'
             echo '```sql'
-            echo "-- pin this release"
-            echo "SET custom_extension_repository = '${BASE}/${TAG}';"
-            echo "-- or always track the newest:  '${BASE}/latest'"
-            echo 'INSTALL duck_diff;'
-            echo 'LOAD duck_diff;'
+            echo "LOAD '/path/to/${EXTENSION_NAME}-${DUCKDB_VERSION}-<platform>.duckdb_extension';"
+            echo 'FROM table_diff(...);'
             echo '```'
+            echo "(\`allow_unsigned_extensions\` is a launch flag, not a \`SET\` — these are signed with a third-party key.)"
             echo
             echo "### Provenance & integrity"
             echo
             echo "Built for **DuckDB ${DUCKDB_VERSION}** from commit \`${GITHUB_SHA}\`."
-            echo "The signed per-platform binaries are attached below (and served from the Pages repo above)."
-            echo "Verify a download against the public key (\`duck_diff-signing-key.pub\`) — see [docs/DISTRIBUTION.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/DISTRIBUTION.md). SHA256 of each published binary:"
+            echo "Verify against the public key (\`duck_diff-signing-key.pub\`) — see [docs/DISTRIBUTION.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/DISTRIBUTION.md). SHA256 of each binary:"
             echo
             echo '```'
-            cat build_tree/SHA256SUMS
+            cat dist/SHA256SUMS
             echo '```'
           } > notes.md
           gh release edit "$TAG" --notes-file notes.md
