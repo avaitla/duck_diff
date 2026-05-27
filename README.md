@@ -84,7 +84,7 @@ duckdb -unsigned
 Load it with the full filepath:
 
 ```sql
-LOAD '/Users/avaitla/duck_diff.duckdb_extension';
+LOAD '/path/to/duck_diff.duckdb_extension';
 SELECT * FROM table_diff('FROM a', 'FROM b', pk := 'id');
 ```
 
