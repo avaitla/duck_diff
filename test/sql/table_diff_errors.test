@@ -22,13 +22,13 @@ INSERT INTO b VALUES (1, 10);
 # pk is required
 # ----------------------------------------------------------------------------
 statement error
-SELECT * FROM table_diff('a', 'b');
+SELECT * FROM table_diff('FROM a', 'FROM b');
 ----
 pk
 
 # pk column must exist in both relations
 statement error
-SELECT * FROM table_diff('a', 'b', pk := 'nope');
+SELECT * FROM table_diff('FROM a', 'FROM b', pk := 'nope');
 ----
 nope
 
@@ -48,7 +48,7 @@ statement ok
 INSERT INTO dr VALUES (1, 1);
 
 statement error
-SELECT * FROM table_diff('dl', 'dr', pk := 'id');
+SELECT * FROM table_diff('FROM dl', 'FROM dr', pk := 'id');
 ----
 duplicate
 
@@ -60,6 +60,34 @@ statement ok
 INSERT INTO dr VALUES (1, 9);
 
 statement error
-SELECT * FROM table_diff('dl', 'dr', pk := 'id');
+SELECT * FROM table_diff('FROM dl', 'FROM dr', pk := 'id');
 ----
 duplicate
+
+# ----------------------------------------------------------------------------
+# Relation arguments are queries: a bare relation name is rejected, the explicit
+# 'FROM tbl' / 'SELECT * FROM tbl' forms are accepted.
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE qa (id INTEGER, v INTEGER);
+
+statement ok
+INSERT INTO qa VALUES (1, 10);
+
+# bare name on the left -> parse error, message nudges toward FROM
+statement error
+SELECT * FROM table_diff('qa', 'FROM qa', pk := 'id');
+----
+SELECT * FROM tbl
+
+# both explicit forms work and agree (table matches itself)
+query IT
+SELECT id, diff_status FROM table_diff('FROM qa', 'SELECT * FROM qa', pk := 'id');
+----
+1	identical
+
+# a projecting SELECT is a valid relation argument
+query IT
+SELECT id, diff_status FROM table_diff('SELECT id, v FROM qa', 'FROM qa', pk := 'id');
+----
+1	identical

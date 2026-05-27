@@ -7,7 +7,7 @@
 
 # Before the extension is loaded, the function does not exist.
 statement error
-SELECT * FROM table_diff('l', 'r', pk := 'id');
+SELECT * FROM table_diff('FROM l', 'FROM r', pk := 'id');
 ----
 Catalog Error
 
@@ -27,50 +27,50 @@ CREATE TABLE r (id INTEGER, number INTEGER, email VARCHAR, score DOUBLE);
 
 statement ok
 INSERT INTO l VALUES
-    (1, 10, 'a@x', 1.5),   -- matched
+    (1, 10, 'a@x', 1.5),   -- identical
     (3, 30, 'c@x', 3.5),   -- left_only
-    (5, 50, 'e@x', 5.5),   -- differs (number + email)
-    (8, 80, NULL,  8.5),   -- matched (NULL email both sides)
-    (9, 90, 'i@x', 9.5);   -- differs (email -> NULL)
+    (5, 50, 'e@x', 5.5),   -- different (number + email)
+    (8, 80, NULL,  8.5),   -- identical (NULL email both sides)
+    (9, 90, 'i@x', 9.5);   -- different (email -> NULL)
 
 statement ok
 INSERT INTO r VALUES
-    (1, 10, 'a@x', 1.5),   -- matched
-    (5, 99, 'E@x', 5.5),   -- differs
+    (1, 10, 'a@x', 1.5),   -- identical
+    (5, 99, 'E@x', 5.5),   -- different
     (7, 70, 'g@x', 7.5),   -- right_only
-    (8, 80, NULL,  8.5),   -- matched
-    (9, 90, NULL,  9.5);   -- differs (email -> NULL)
+    (8, 80, NULL,  8.5),   -- identical
+    (9, 90, NULL,  9.5);   -- different (email -> NULL)
 
 # ----------------------------------------------------------------------------
 # key column (original name 'id') + diff_status, one row per distinct key
 # ----------------------------------------------------------------------------
 query IT
-SELECT id, diff_status FROM table_diff('l', 'r', pk := 'id') ORDER BY id;
+SELECT id, diff_status FROM table_diff('FROM l', 'FROM r', pk := 'id') ORDER BY id;
 ----
-1	matched
+1	identical
 3	left_only
-5	differs
+5	different
 7	right_only
-8	matched
-9	differs
+8	identical
+9	different
 
 query I
-SELECT count(*) FROM table_diff('l', 'r', pk := 'id');
+SELECT count(*) FROM table_diff('FROM l', 'FROM r', pk := 'id');
 ----
 6
 
 # Single-element list form of pk is equivalent to the string form
 query I
-SELECT count(*) FROM table_diff('l', 'r', pk := ['id']) WHERE diff_status = 'differs';
+SELECT count(*) FROM table_diff('FROM l', 'FROM r', pk := ['id']) WHERE diff_status = 'different';
 ----
 2
 
 # ----------------------------------------------------------------------------
-# diff_data is NULL except for 'differs'
+# diff_data is NULL except for 'different'
 # ----------------------------------------------------------------------------
 query IT
-SELECT id, diff_data FROM table_diff('l', 'r', pk := 'id')
-WHERE diff_status <> 'differs' ORDER BY id;
+SELECT id, diff_data FROM table_diff('FROM l', 'FROM r', pk := 'id')
+WHERE diff_status <> 'different' ORDER BY id;
 ----
 1	NULL
 3	NULL
@@ -78,21 +78,21 @@ WHERE diff_status <> 'differs' ORDER BY id;
 8	NULL
 
 # ----------------------------------------------------------------------------
-# diff_columns: names of the differing columns, populated only for 'differs'
+# the differing column names are just json_keys(diff_data) (no diff_columns col)
 # ----------------------------------------------------------------------------
 query T
-SELECT diff_columns FROM table_diff('l', 'r', pk := 'id') WHERE id = 5;
+SELECT json_keys(diff_data) FROM table_diff('FROM l', 'FROM r', pk := 'id') WHERE id = 5;
 ----
 [number, email]
 
 query T
-SELECT diff_columns FROM table_diff('l', 'r', pk := 'id') WHERE id = 9;
+SELECT json_keys(diff_data) FROM table_diff('FROM l', 'FROM r', pk := 'id') WHERE id = 9;
 ----
 [email]
 
 query IT
-SELECT id, diff_columns FROM table_diff('l', 'r', pk := 'id')
-WHERE diff_status <> 'differs' ORDER BY id;
+SELECT id, json_keys(diff_data) FROM table_diff('FROM l', 'FROM r', pk := 'id')
+WHERE diff_status <> 'different' ORDER BY id;
 ----
 1	NULL
 3	NULL
@@ -100,43 +100,43 @@ WHERE diff_status <> 'differs' ORDER BY id;
 8	NULL
 
 # ----------------------------------------------------------------------------
-# diff_data content: only differing columns appear (key 5 differs on
+# diff_data content: only differing columns appear (key 5 different on
 # number+email, NOT score -> score absent)
 # ----------------------------------------------------------------------------
 query T
-SELECT json_keys(diff_data) FROM table_diff('l', 'r', pk := 'id') WHERE id = 5;
+SELECT json_keys(diff_data) FROM table_diff('FROM l', 'FROM r', pk := 'id') WHERE id = 5;
 ----
 [number, email]
 
 query TT
 SELECT diff_data->'number'->>'left', diff_data->'number'->>'right'
-FROM table_diff('l', 'r', pk := 'id') WHERE id = 5;
+FROM table_diff('FROM l', 'FROM r', pk := 'id') WHERE id = 5;
 ----
 50	99
 
 query TT
 SELECT diff_data->'email'->>'left', diff_data->'email'->>'right'
-FROM table_diff('l', 'r', pk := 'id') WHERE id = 5;
+FROM table_diff('FROM l', 'FROM r', pk := 'id') WHERE id = 5;
 ----
 e@x	E@x
 
 # ----------------------------------------------------------------------------
-# NULL semantics: NULL IS NOT DISTINCT FROM NULL -> matched (key 8);
-# value vs NULL -> differs (key 9, email)
+# NULL semantics: NULL IS NOT DISTINCT FROM NULL -> identical (key 8);
+# value vs NULL -> different (key 9, email)
 # ----------------------------------------------------------------------------
 query T
-SELECT diff_status FROM table_diff('l', 'r', pk := 'id') WHERE id = 8;
+SELECT diff_status FROM table_diff('FROM l', 'FROM r', pk := 'id') WHERE id = 8;
 ----
-matched
+identical
 
 query T
-SELECT json_keys(diff_data) FROM table_diff('l', 'r', pk := 'id') WHERE id = 9;
+SELECT json_keys(diff_data) FROM table_diff('FROM l', 'FROM r', pk := 'id') WHERE id = 9;
 ----
 [email]
 
 query TT
 SELECT diff_data->'email'->>'left', json_type(diff_data->'email'->'right')
-FROM table_diff('l', 'r', pk := 'id') WHERE id = 9;
+FROM table_diff('FROM l', 'FROM r', pk := 'id') WHERE id = 9;
 ----
 i@x	NULL
 
@@ -147,7 +147,7 @@ i@x	NULL
 query T
 SELECT json_type(diff_data->'number'->'left') <> 'VARCHAR'
    AND json_type(diff_data->'email'->'left') = 'VARCHAR'
-FROM table_diff('l', 'r', pk := 'id') WHERE id = 5;
+FROM table_diff('FROM l', 'FROM r', pk := 'id') WHERE id = 5;
 ----
 true
 
@@ -156,16 +156,16 @@ true
 # ----------------------------------------------------------------------------
 query IT
 SELECT id, diff_status FROM table_diff(
-    '(SELECT * FROM l WHERE id <= 3)',
-    '(SELECT * FROM r WHERE id <= 3)',
+    'FROM (SELECT * FROM l WHERE id <= 3)',
+    'FROM (SELECT * FROM r WHERE id <= 3)',
     pk := 'id'
 ) ORDER BY id;
 ----
-1	matched
+1	identical
 3	left_only
 
-# Identical relations -> all matched
+# Identical relations -> all identical
 query I
-SELECT count(*) FROM table_diff('l', 'l', pk := 'id') WHERE diff_status <> 'matched';
+SELECT count(*) FROM table_diff('FROM l', 'FROM l', pk := 'id') WHERE diff_status <> 'identical';
 ----
 0

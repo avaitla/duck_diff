@@ -1,5 +1,5 @@
 # name: test/sql/table_diff_composite.test
-# description: composite primary key (pk + additional_pk) and join-back
+# description: composite primary key (pk as a list) and join-back
 # group: [sql]
 
 require duck_diff
@@ -14,41 +14,41 @@ CREATE TABLE cr (region VARCHAR, id INTEGER, v INTEGER);
 
 statement ok
 INSERT INTO cl VALUES
-    ('US', 1, 10),   -- matched
-    ('US', 2, 20),   -- differs (v)
+    ('US', 1, 10),   -- identical
+    ('US', 2, 20),   -- different (v)
     ('EU', 1, 30);   -- left_only
 
 statement ok
 INSERT INTO cr VALUES
-    ('US', 1, 10),   -- matched
-    ('US', 2, 99),   -- differs
+    ('US', 1, 10),   -- identical
+    ('US', 2, 99),   -- different
     ('EU', 2, 40);   -- right_only
 
 # ----------------------------------------------------------------------------
-# Composite key: pk := 'region', additional_pk := ['id']
+# Composite key: pk := ['region', 'id']
 # Key columns appear under their original names (region, id)
 # ----------------------------------------------------------------------------
 query TIT
 SELECT region, id, diff_status
-FROM table_diff('cl', 'cr', pk := 'region', additional_pk := ['id'])
+FROM table_diff('FROM cl', 'FROM cr', pk := ['region', 'id'])
 ORDER BY region, id;
 ----
 EU	1	left_only
 EU	2	right_only
-US	1	matched
-US	2	differs
+US	1	identical
+US	2	different
 
 # diff_data only reflects the differing column v
 query T
 SELECT json_keys(diff_data)
-FROM table_diff('cl', 'cr', pk := 'region', additional_pk := ['id'])
+FROM table_diff('FROM cl', 'FROM cr', pk := ['region', 'id'])
 WHERE region = 'US' AND id = 2;
 ----
 [v]
 
 query TT
 SELECT diff_data->'v'->>'left', diff_data->'v'->>'right'
-FROM table_diff('cl', 'cr', pk := 'region', additional_pk := ['id'])
+FROM table_diff('FROM cl', 'FROM cr', pk := ['region', 'id'])
 WHERE region = 'US' AND id = 2;
 ----
 20	99
@@ -59,10 +59,10 @@ WHERE region = 'US' AND id = 2;
 # ----------------------------------------------------------------------------
 query TIT
 SELECT d.region, d.id, d.diff_status
-FROM table_diff('cl', 'cr', pk := 'region', additional_pk := ['id']) d
+FROM table_diff('FROM cl', 'FROM cr', pk := ['region', 'id']) d
 JOIN cl USING (region, id)
 ORDER BY region, id;
 ----
 EU	1	left_only
-US	1	matched
-US	2	differs
+US	1	identical
+US	2	different

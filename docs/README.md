@@ -85,13 +85,13 @@ Now we can use the features from the extension directly in DuckDB. See
 ```
 D CREATE TABLE l AS SELECT * FROM (VALUES (1,'a'),(2,'b')) t(id,v);
 D CREATE TABLE r AS SELECT * FROM (VALUES (1,'a'),(2,'B'),(3,'c')) t(id,v);
-D FROM table_diff('l', 'r', pk := 'id') ORDER BY id;
+D FROM table_diff('FROM l', 'FROM r', pk := 'id') ORDER BY id;
 ┌───────┬─────────────┬───────────────────────────────┐
 │  id   │ diff_status │           diff_data           │
 │ int32 │   varchar   │             json              │
 ├───────┼─────────────┼───────────────────────────────┤
-│   1   │ matched     │ NULL                          │
-│   2   │ differs     │ {"v":{"left":"b","right":"B"}}│
+│   1   │ identical     │ NULL                          │
+│   2   │ different     │ {"v":{"left":"b","right":"B"}}│
 │   3   │ right_only  │ NULL                          │
 └───────┴─────────────┴───────────────────────────────┘
 ```

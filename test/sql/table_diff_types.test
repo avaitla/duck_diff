@@ -19,20 +19,20 @@ INSERT INTO tt_l VALUES
 
 statement ok
 INSERT INTO tt_r VALUES
-    (1, true,  9000000000, 10.50, DATE '2021-01-01', TIMESTAMP '2021-01-01 10:00:00', 'AB'::BLOB),  -- matched
-    (2, true,  2,          99.99, DATE '2021-06-15', TIMESTAMP '2021-06-15 08:30:00', 'CD'::BLOB);  -- differs (all)
+    (1, true,  9000000000, 10.50, DATE '2021-01-01', TIMESTAMP '2021-01-01 10:00:00', 'AB'::BLOB),  -- identical
+    (2, true,  2,          99.99, DATE '2021-06-15', TIMESTAMP '2021-06-15 08:30:00', 'CD'::BLOB);  -- different (all)
 
 # ----------------------------------------------------------------------------
 # Status + the differing columns across every type
 # ----------------------------------------------------------------------------
 query IT
-SELECT id, diff_status FROM table_diff('tt_l', 'tt_r', pk := 'id') ORDER BY id;
+SELECT id, diff_status FROM table_diff('FROM tt_l', 'FROM tt_r', pk := 'id') ORDER BY id;
 ----
-1	matched
-2	differs
+1	identical
+2	different
 
 query T
-SELECT diff_columns FROM table_diff('tt_l', 'tt_r', pk := 'id') WHERE id = 2;
+SELECT json_keys(diff_data) FROM table_diff('FROM tt_l', 'FROM tt_r', pk := 'id') WHERE id = 2;
 ----
 [flag, bignum, amount, dt, ts, blb]
 
@@ -46,7 +46,7 @@ SELECT diff_data->'flag'->>'right',
        diff_data->'dt'->>'right',
        diff_data->'ts'->>'right',
        diff_data->'blb'->>'right'
-FROM table_diff('tt_l', 'tt_r', pk := 'id') WHERE id = 2;
+FROM table_diff('FROM tt_l', 'FROM tt_r', pk := 'id') WHERE id = 2;
 ----
 true	1	10.5	2021-06-15	2021-06-15 08:30:00	CD
 
@@ -54,15 +54,22 @@ true	1	10.5	2021-06-15	2021-06-15 08:30:00	CD
 query T
 SELECT json_type(diff_data->'flag'->'left') = 'BOOLEAN'
    AND json_type(diff_data->'bignum'->'left') <> 'VARCHAR'
-FROM table_diff('tt_l', 'tt_r', pk := 'id') WHERE id = 2;
+FROM table_diff('FROM tt_l', 'FROM tt_r', pk := 'id') WHERE id = 2;
 ----
 true
 
 # ----------------------------------------------------------------------------
-# Wide mode preserves the native SQL types as real columns
+# The per-column <c>_left/<c>_right expansion preserves the native SQL types as
+# real columns, plus a VARCHAR <c>_diff_status per compared column.
 # ----------------------------------------------------------------------------
-query TTTT
-SELECT typeof(flag_left), typeof(bignum_left), typeof(amount_left), typeof(dt_left)
-FROM table_diff('tt_l', 'tt_r', pk := 'id', wide := true) LIMIT 1;
+query TTTTT
+SELECT typeof(flag_left), typeof(bignum_left), typeof(amount_left), typeof(dt_left), typeof(flag_diff_status)
+FROM table_diff('FROM tt_l', 'FROM tt_r', pk := 'id') LIMIT 1;
 ----
-BOOLEAN	BIGINT	DECIMAL(10,2)	DATE
+BOOLEAN	BIGINT	DECIMAL(10,2)	DATE	VARCHAR
+
+query TT
+SELECT flag_diff_status, bignum_left
+FROM table_diff('FROM tt_l', 'FROM tt_r', pk := 'id') WHERE id = 2;
+----
+different	1

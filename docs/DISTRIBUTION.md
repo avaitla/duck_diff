@@ -80,7 +80,7 @@ duckdb -unsigned
 ```
 ```sql
 LOAD 'duck_diff.duckdb_extension';
-FROM table_diff('a', 'b', pk := 'id');
+FROM table_diff('FROM a', 'FROM b', pk := 'id');
 ```
 From a client library, enable unsigned extensions in the connection config (e.g.
 Python: `duckdb.connect(config={'allow_unsigned_extensions': True})`).

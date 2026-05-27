@@ -1,5 +1,5 @@
 # name: test/sql/table_diff_schema.test
-# description: schema reconciliation (compare strict/intersect, columns, ignore, type mismatch, prefix/collision)
+# description: schema reconciliation (require_matching_columns / upcast_types, columns, ignore, type mismatch, prefix/collision)
 # group: [sql]
 
 require duck_diff
@@ -23,20 +23,20 @@ INSERT INTO sr VALUES (1, 100, 9), (2, 999, 9);
 
 # strict (default): differing column sets -> hard error
 statement error
-SELECT * FROM table_diff('sl', 'sr', pk := 'id');
+SELECT * FROM table_diff('FROM sl', 'FROM sr', pk := 'id');
 ----
 column
 
-# intersect: compare only common columns (a); only_l/only_r dropped
+# require_matching_columns := false: compare only common columns (a); only_l/only_r dropped
 query IT
-SELECT id, diff_status FROM table_diff('sl', 'sr', pk := 'id', compare := 'intersect')
+SELECT id, diff_status FROM table_diff('FROM sl', 'FROM sr', pk := 'id', require_matching_columns := false)
 ORDER BY id;
 ----
-1	matched
-2	differs
+1	identical
+2	different
 
 query T
-SELECT json_keys(diff_data) FROM table_diff('sl', 'sr', pk := 'id', compare := 'intersect')
+SELECT json_keys(diff_data) FROM table_diff('FROM sl', 'FROM sr', pk := 'id', require_matching_columns := false)
 WHERE id = 2;
 ----
 [a]
@@ -58,17 +58,17 @@ INSERT INTO tr VALUES (1, 'a'), (2, 'b');
 
 # strict: type mismatch -> hard error
 statement error
-SELECT * FROM table_diff('tl', 'tr', pk := 'id');
+SELECT * FROM table_diff('FROM tl', 'FROM tr', pk := 'id');
 ----
 type
 
-# intersect: type-mismatched column excluded -> nothing left to compare
+# require_matching_columns := false (no upcast): type-mismatched column dropped -> nothing left to compare
 query IT
-SELECT id, diff_status FROM table_diff('tl', 'tr', pk := 'id', compare := 'intersect')
+SELECT id, diff_status FROM table_diff('FROM tl', 'FROM tr', pk := 'id', require_matching_columns := false)
 ORDER BY id;
 ----
-1	matched
-2	matched
+1	identical
+2	identical
 
 # ----------------------------------------------------------------------------
 # columns / ignore (identical schemas, so strict is fine)
@@ -87,19 +87,19 @@ INSERT INTO cm_r VALUES (1, 9, 1), (2, 2, 9);
 
 # columns := ['x'] -> compare only x (y ignored)
 query IT
-SELECT id, diff_status FROM table_diff('cm_l', 'cm_r', pk := 'id', columns := ['x'])
+SELECT id, diff_status FROM table_diff('FROM cm_l', 'FROM cm_r', pk := 'id', columns := ['x'])
 ORDER BY id;
 ----
-1	differs
-2	matched
+1	different
+2	identical
 
 # ignore := ['x'] -> compare everything except x (i.e. y)
 query IT
-SELECT id, diff_status FROM table_diff('cm_l', 'cm_r', pk := 'id', ignore := ['x'])
+SELECT id, diff_status FROM table_diff('FROM cm_l', 'FROM cm_r', pk := 'id', ignore := ['x'])
 ORDER BY id;
 ----
-1	matched
-2	differs
+1	identical
+2	different
 
 # ----------------------------------------------------------------------------
 # Collision: a key column named 'diff_status' clashes with the meta column
@@ -118,15 +118,76 @@ INSERT INTO coll_r VALUES (1, 10), (2, 99);
 
 # without a custom prefix the output column names collide -> error mentioning prefix
 statement error
-SELECT * FROM table_diff('coll_l', 'coll_r', pk := 'diff_status');
+SELECT * FROM table_diff('FROM coll_l', 'FROM coll_r', pk := 'diff_status');
 ----
 prefix
 
 # custom prefix moves the meta columns out of the way (x_status / x_data)
 query IT
 SELECT diff_status, x_status
-FROM table_diff('coll_l', 'coll_r', pk := 'diff_status', prefix := 'x_')
+FROM table_diff('FROM coll_l', 'FROM coll_r', pk := 'diff_status', prefix := 'x_')
 ORDER BY diff_status;
 ----
-1	matched
-2	differs
+1	identical
+2	different
+
+# ----------------------------------------------------------------------------
+# upcast_types: differing types reconciled via the common super-type instead of
+# erroring (default) or being dropped (require_matching_columns := false alone).
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE xt_l (id BIGINT, amt BIGINT, flag BIGINT);
+
+statement ok
+CREATE TABLE xt_r (id INTEGER, amt INTEGER, flag BOOLEAN);
+
+statement ok
+INSERT INTO xt_l VALUES (1, 10, 1), (2, 20, 0);
+
+# right.flag false/true -> 0/1; row 1 amt different (10 vs 11), row 2 all equal
+statement ok
+INSERT INTO xt_r VALUES (1, 11, true), (2, 20, false);
+
+# default: key type mismatch errors, and the message points at upcast_types
+statement error
+SELECT * FROM table_diff('FROM xt_l', 'FROM xt_r', pk := 'id');
+----
+upcast_types
+
+# require_matching_columns := false + upcast_types := true: BIGINT/INTEGER key
+# widens to BIGINT; amt (BIGINT/INTEGER) and flag (BIGINT/BOOLEAN) both compared
+# via their common type
+query IT
+SELECT id, diff_status FROM table_diff('FROM xt_l', 'FROM xt_r', pk := 'id', require_matching_columns := false, upcast_types := true)
+ORDER BY id;
+----
+1	different
+2	identical
+
+# only amt different on row 1 (flag 1 == true reconciled as equal)
+query T
+SELECT json_keys(diff_data) FROM table_diff('FROM xt_l', 'FROM xt_r', pk := 'id', require_matching_columns := false, upcast_types := true)
+WHERE id = 1;
+----
+[amt]
+
+# the two flags are independent but cannot both be set: requiring matching
+# columns already demands identical types, so upcasting them is contradictory
+statement error
+SELECT * FROM table_diff('FROM xt_l', 'FROM xt_r', pk := 'id', require_matching_columns := true, upcast_types := true);
+----
+cannot be combined
+
+# ----------------------------------------------------------------------------
+# A key with no common type at all still errors, even with upcast_types.
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE nk_l (id INTEGER[], v INTEGER);
+
+statement ok
+CREATE TABLE nk_r (id VARCHAR, v INTEGER);
+
+statement error
+SELECT * FROM table_diff('FROM nk_l', 'FROM nk_r', pk := 'id', require_matching_columns := false, upcast_types := true);
+----
+no common type

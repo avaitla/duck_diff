@@ -1,0 +1,69 @@
+# name: test/sql/table_diff_expand.test
+# description: per-column expansion -- compared columns always emit <c>_left/<c>_right (native types) + <c>_diff_status, context columns emit <c>_left/<c>_right
+# group: [sql]
+
+require duck_diff
+
+require json
+
+statement ok
+CREATE TABLE wl (id INTEGER, a INTEGER, name VARCHAR);
+
+statement ok
+CREATE TABLE wr (id INTEGER, a INTEGER, name VARCHAR);
+
+statement ok
+INSERT INTO wl VALUES
+    (1, 10, 'x'),   -- different (a)
+    (2, 20, 'y'),   -- identical
+    (3, 30, 'z');   -- left_only
+
+statement ok
+INSERT INTO wr VALUES
+    (1, 99, 'x'),   -- different
+    (2, 20, 'Y'),   -- identical (name ignored)
+    (4, 40, 'w');   -- right_only
+
+# ----------------------------------------------------------------------------
+# Every diff expands the compared column 'a' into a_left / a_right (native typed
+# values) + a_diff_status, and the context column 'name' into name_left /
+# name_right (no status -- not compared). a_diff_status mirrors the row status:
+# left_only / right_only on one-sided rows, else identical / different.
+# ----------------------------------------------------------------------------
+query ITIITTT
+SELECT id, diff_status, a_left, a_right, a_diff_status, name_left, name_right
+FROM table_diff('FROM wl', 'FROM wr', pk := 'id', ignore := ['name'], context := ['name'])
+ORDER BY id;
+----
+1	different	10	99	different	x	x
+2	identical	20	20	identical	y	Y
+3	left_only	30	NULL	left_only	z	NULL
+4	right_only	NULL	40	right_only	NULL	w
+
+# native typed values are preserved as real columns; the per-column status is VARCHAR
+query TT
+SELECT typeof(a_left), typeof(a_diff_status)
+FROM table_diff('FROM wl', 'FROM wr', pk := 'id', ignore := ['name']) LIMIT 1;
+----
+INTEGER	VARCHAR
+
+# diff_data is always present alongside the expanded columns
+query T
+SELECT json_keys(diff_data) FROM table_diff('FROM wl', 'FROM wr', pk := 'id', ignore := ['name']) WHERE id = 1;
+----
+[a]
+
+# ----------------------------------------------------------------------------
+# context := ['*'] is every non-key column. Here 'a' is compared and 'name' is
+# context (ignored from the diff); a compared column is emitted once, with its
+# _diff_status, and is not duplicated as a context column.
+# ----------------------------------------------------------------------------
+query ITIITTT
+SELECT id, diff_status, a_left, a_right, a_diff_status, name_left, name_right
+FROM table_diff('FROM wl', 'FROM wr', pk := 'id', ignore := ['name'], context := ['*'])
+ORDER BY id;
+----
+1	different	10	99	different	x	x
+2	identical	20	20	identical	y	Y
+3	left_only	30	NULL	left_only	z	NULL
+4	right_only	NULL	40	right_only	NULL	w

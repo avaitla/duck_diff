@@ -1,11 +1,12 @@
 # duck_diff
 
-A DuckDB extension for diffing two relations (tables, sql queries etc) off a primary key. Given a
-"left" and a "right" relation, it reports — per key — whether the row
-**matched**, **differs**, or exists only on one side, and (for differing rows)
-exactly which columns changed. It also supports a composite primary key, 
-selecting a subset of columns to diff or ignore in diffing, and formatting as json 
-columns or wide typed columns.
+A DuckDB extension for diffing two relations (tables, SQL queries, etc.) off a primary key. Given a
+"left" and a "right" relation, it reports — per key — whether the row is
+**identical**, **different**, or exists only on one side, and exactly what
+changed. Each result row carries both a JSON `diff_data` summary of the changed
+columns *and* per-column expanded columns (`<c>_left` / `<c>_right` /
+`<c>_diff_status`). It also supports a composite primary key and selecting a
+subset of columns to diff or ignore.
 
 ## Quick start
 
@@ -25,50 +26,40 @@ CREATE TABLE users_v2 AS SELECT * FROM (VALUES
     (4, 'Mike',  'mike@x.com',   10)    -- new (id 3 removed)
 ) t(id, name, email, credits);
 
-SELECT * FROM table_diff('users_v1', 'users_v2', pk := 'id') ORDER BY id;
+SELECT id, diff_status, diff_data, credits_left, credits_right, credits_diff_status
+FROM table_diff('FROM users_v1', 'FROM users_v2', pk := 'id') ORDER BY id;
 ```
 ```
-┌───────┬─────────────┬──────────────┬──────────────────────────────────────┐
-│  id   │ diff_status │ diff_columns │              diff_data               │
-├───────┼─────────────┼──────────────┼──────────────────────────────────────┤
-│   1   │ differs     │ [credits]    │ {"credits":{"left":100,"right":120}} │
-│   2   │ matched     │ NULL         │ NULL                                 │
-│   3   │ left_only   │ NULL         │ NULL                                 │
-│   4   │ right_only  │ NULL         │ NULL                                 │
-└───────┴─────────────┴──────────────┴──────────────────────────────────────┘
+┌────┬─────────────┬──────────────────────────────────────┬──────────────┬───────────────┬─────────────────────┐
+│ id │ diff_status │              diff_data               │ credits_left │ credits_right │ credits_diff_status │
+├────┼─────────────┼──────────────────────────────────────┼──────────────┼───────────────┼─────────────────────┤
+│ 1  │ different   │ {"credits":{"left":100,"right":120}} │ 100          │ 120           │ different           │
+│ 2  │ identical   │ NULL                                 │ 50           │ 50            │ identical           │
+│ 3  │ left_only   │ NULL                                 │ 75           │ NULL          │ left_only           │
+│ 4  │ right_only  │ NULL                                 │ NULL         │ 10            │ right_only          │
+└────┴─────────────┴──────────────────────────────────────┴──────────────┴───────────────┴─────────────────────┘
 ```
+
+Every result row has both the JSON `diff_data` (only the changed columns) and,
+for each compared column, expanded `<c>_left` / `<c>_right` (native types) /
+`<c>_diff_status` (`identical` / `different` / `left_only` / `right_only`). Pick
+whichever you need — `SELECT diff_data` for the compact summary, or the
+`*_left`/`*_right`/`*_diff_status` columns to filter and compute on values
+directly. The differing column names are just `json_keys(diff_data)`.
 ```sql
 -- counts + percentages
-SELECT * FROM table_diff_summary('users_v1', 'users_v2', pk := 'id');
+SELECT * FROM table_diff_summary('FROM users_v1', 'FROM users_v2', pk := 'id');
 ```
 ```
 ┌───────────┬───────────┬─────────────┬──────────────┬─────────┬─────────────┬─────────────┬───────────────┬────────────────┐
-│ n_matched │ n_differs │ n_left_only │ n_right_only │ n_total │ pct_matched │ pct_differs │ pct_left_only │ pct_right_only │
+│ n_identical │ n_different │ n_left_only │ n_right_only │ n_total │ pct_identical │ pct_different │ pct_left_only │ pct_right_only │
 ├───────────┼───────────┼─────────────┼──────────────┼─────────┼─────────────┼─────────────┼───────────────┼────────────────┤
 │     1     │     1     │      1      │      1       │    4    │    25.0     │    25.0     │     25.0      │      25.0      │
 └───────────┴───────────┴─────────────┴──────────────┴─────────┴─────────────┴─────────────┴───────────────┴────────────────┘
 ```
 ```sql
 -- or a single yes/no
-SELECT tables_equal('users_v1', 'users_v2', pk := 'id');   -- false
-```
-
-Prefer columns side by side instead of JSON? Add `wide := true` to expand each
-compared column into `<col>_left` / `<col>_right` / `<col>_diff`:
-
-```sql
-SELECT id, diff_status, credits_left, credits_right, credits_diff
-FROM table_diff('users_v1', 'users_v2', pk := 'id', wide := true) ORDER BY id;
-```
-```
-┌───────┬─────────────┬──────────────┬───────────────┬──────────────┐
-│  id   │ diff_status │ credits_left │ credits_right │ credits_diff │
-├───────┼─────────────┼──────────────┼───────────────┼──────────────┤
-│   1   │ differs     │      100     │      120      │ true         │
-│   2   │ matched     │       50     │       50      │ false        │
-│   3   │ left_only   │       75     │     NULL      │ true         │
-│   4   │ right_only  │     NULL     │       10      │ true         │
-└───────┴─────────────┴──────────────┴───────────────┴──────────────┘
+SELECT tables_equal('FROM users_v1', 'FROM users_v2', pk := 'id');   -- false
 ```
 
 ## Install
@@ -90,7 +81,7 @@ Load it with the full filepath:
 
 ```sql
 LOAD '/Users/avaitla/duck_diff.duckdb_extension';
-SELECT * FROM table_diff('a', 'b', pk := 'id');
+SELECT * FROM table_diff('FROM a', 'FROM b', pk := 'id');
 ```
 
 Platforms: `linux_amd64`, `linux_arm64`, `osx_amd64`, `osx_arm64`,
@@ -119,46 +110,48 @@ See [docs/functions.md](docs/functions.md) for the full reference.
 |----------|---------|---------|
 | `table_diff(left, right, pk := …)` | table | one row per key: key column(s), `diff_status`, `diff_data` |
 | `table_diff_summary(left, right, pk := …)` | one row | counts (and percentages) per status |
-| `tables_equal(left, right, pk := …)` | BOOLEAN | true iff every key matched |
+| `tables_equal(left, right, pk := …)` | BOOLEAN | true iff every key identical |
 | `schema_diff(left, right)` | table | per-column name/type comparison: `column_name`, `left_type`, `right_type`, `status` |
 
 ## `table_diff` parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `left`, `right` | VARCHAR | Relation expressions — a table/view name, a table function, or a `(subquery)`. |
+| `left`, `right` | VARCHAR | Query strings, written as you would in SQL: a `FROM …` clause or a full `SELECT … FROM …`. E.g. `'FROM orders'`, `'FROM read_csv(''x.csv'')'`, `'SELECT id, amount FROM orders WHERE region = ''EU'''`. A bare name like `'orders'` is rejected. |
 | `pk` | VARCHAR \| LIST | **Required.** Primary key column(s); a string or a list. |
-| `additional_pk` | LIST | Extra key columns appended to `pk` (composite key). |
-| `compare` | VARCHAR | `'strict'` (default; identical column names+types required) or `'intersect'` (only common, same-typed columns). |
+| `require_matching_columns` | BOOLEAN | Default `true`: both relations must have identical columns (names+types), else error. Set `false` to compare only common columns. |
+| `upcast_types` | BOOLEAN | Default `false`. Set `true` (with `require_matching_columns := false`) to reconcile differing types via their common super-type, e.g. BIGINT vs INTEGER — see [function reference](docs/functions.md#cross-type-comparison). |
+| `numeric_tolerance` | DOUBLE | Treat numbers within this band as equal (`abs(left-right) <= tol`); compared columns only. |
+| `timestamp_precision` | VARCHAR | Truncate timestamp columns with `date_trunc(part, …)` before comparing, e.g. `'second'`. |
+| `null_equals_empty` | BOOLEAN | Default `false`. Treat `NULL` and `''` as equal for VARCHAR compared columns. |
 | `columns` | LIST | Restrict the compared (non-key) columns to this list. |
 | `ignore` | LIST | Exclude these columns from comparison. |
-| `context` | LIST | Pull these columns from both sides into `left_context`/`right_context`; use `['*']` for every non-key, non-compared column. |
-| `wide` | BOOLEAN | Expand each compared column into `<c>_left`/`<c>_right`/`<c>_diff` instead of JSON `diff_data`. |
+| `context` | LIST | Also expand these **non-compared** columns as `<c>_left`/`<c>_right` (no `_diff_status`). Use `['*']` for every non-key column, which surfaces the full row for `left_only`/`right_only` rows. |
 | `prefix` | VARCHAR | Prefix for the meta columns (default `'diff_'`); change it if a key column would collide. |
 
 **Output:** the key column(s) under their original names (so you can
-`JOIN … USING (…)`), then `diff_status` (`matched` / `differs` / `left_only` /
+`JOIN … USING (…)`), then `diff_status` (`identical` / `different` / `left_only` /
 `right_only`), then `diff_data` — a JSON object of only the changed columns,
-`{"col": {"left": …, "right": …}}`, types preserved (or the expanded
-`_left`/`_right`/`_diff` columns in wide mode). Comparison is NULL-safe
-(`IS NOT DISTINCT FROM`, so `NULL` equals `NULL`).
+`{"col": {"left": …, "right": …}}`, types preserved — and then, per compared
+column, the expanded `<c>_left` / `<c>_right` (native types) / `<c>_diff_status`.
+Comparison is NULL-safe (`IS NOT DISTINCT FROM`, so `NULL` equals `NULL`).
 
 See [docs/functions.md](docs/functions.md) for the full reference (all functions,
 `schema_diff`, and recipes like deriving `ignore`/`columns` from a query).
 
 ## Diffing external sources (BigQuery, Postgres, CSV, …)
 
-Because the relation arguments are strings spliced in after `FROM`, any table
-function from another extension works. Use DuckDB's dollar-quoting (`$$…$$`) so
-the inner quotes need no escaping:
+Because each relation argument is a query string, any table function from
+another extension works — just write it as a `FROM …` clause. Use DuckDB's
+dollar-quoting (`$$…$$`) so the inner quotes need no escaping:
 
 ```sql
 INSTALL bigquery FROM community; LOAD bigquery;
 ATTACH 'project=my-project' AS bq (TYPE bigquery, READ_ONLY);  -- uses local ADC
 
 SELECT * FROM table_diff(
-  $$ bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260101') $$,
-  $$ bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260526') $$,
+  $$ FROM bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260101') $$,
+  $$ FROM bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260526') $$,
   pk := 'id',
   ignore := ['updated_at', 'updated_by']   -- drop metadata churn from the comparison
 );
@@ -179,12 +172,12 @@ CREATE TABLE IF NOT EXISTS jan AS
 CREATE TABLE IF NOT EXISTS may AS
   SELECT * FROM bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260526');
 
-SELECT * FROM table_diff_summary('jan', 'may', pk := 'id');         -- counts + percentages
-SELECT * FROM table_diff('jan', 'may', pk := 'id') WHERE diff_status='differs' LIMIT 20;
+SELECT * FROM table_diff_summary('FROM jan', 'FROM may', pk := 'id');         -- counts + percentages
+SELECT * FROM table_diff('FROM jan', 'FROM may', pk := 'id') WHERE diff_status='different' LIMIT 20;
 -- which columns change most often:
 SELECT col, count(*) FROM (
-  SELECT unnest(diff_columns) AS col
-  FROM table_diff('jan', 'may', pk := 'id') WHERE diff_status='differs'
+  SELECT unnest(json_keys(diff_data)) AS col
+  FROM table_diff('FROM jan', 'FROM may', pk := 'id') WHERE diff_status='different'
 ) GROUP BY col ORDER BY count(*) DESC;
 ```
 
@@ -221,7 +214,7 @@ duckdb -unsigned
 ```
 ```sql
 LOAD 'build/release/extension/duck_diff/duck_diff.duckdb_extension';
-SELECT * FROM table_diff('a', 'b', pk := 'id');
+SELECT * FROM table_diff('FROM a', 'FROM b', pk := 'id');
 ```
 
 > **Installing without building:** each [GitHub Release](https://github.com/avaitla/duck_diff/releases)
@@ -232,5 +225,21 @@ SELECT * FROM table_diff('a', 'b', pk := 'id');
 > ```sh
 > curl -L -o duck_diff.duckdb_extension \
 >   https://github.com/avaitla/duck_diff/releases/download/v0.1.0/duck_diff-v1.5.2-osx_arm64.duckdb_extension
-> duckdb -unsigned -c "LOAD 'duck_diff.duckdb_extension'; SELECT * FROM table_diff('a','b', pk:='id');"
+> duckdb -unsigned -c "LOAD 'duck_diff.duckdb_extension'; SELECT * FROM table_diff('FROM a','FROM b', pk:='id');"
 > ```
+
+## TODO
+
+- **Projection pushdown.** The generated query reads every column of each
+  relation (`SELECT __t.* …`), even columns that are ignored or never compared.
+  At bind time we already know the exact set the diff needs (keys + compared +
+  context columns), so we could project just those instead. DuckDB would push
+  that narrowed column list into the scan, so native table / Parquet / remote
+  scanners (Postgres, MySQL, BigQuery) fetch only the needed columns — fewer
+  bytes over the wire, identical results. Biggest win for wide remote tables;
+  small for local columnar scans. (No help when the input is a `SELECT *`
+  passthrough — reference the table object instead.)
+
+## License
+
+[MIT](LICENSE) © Anil Vaitla. Bundles DuckDB, which is also MIT-licensed.

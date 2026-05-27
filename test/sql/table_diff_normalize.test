@@ -1,0 +1,131 @@
+# name: test/sql/table_diff_normalize.test
+# description: value-normalization flags (numeric_tolerance, timestamp_precision, null_equals_empty)
+# group: [sql]
+
+require duck_diff
+
+require json
+
+# ----------------------------------------------------------------------------
+# numeric_tolerance: numbers within the tolerance band count as equal
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE nt_l (id INTEGER, amt DOUBLE);
+
+statement ok
+CREATE TABLE nt_r (id INTEGER, amt DOUBLE);
+
+statement ok
+INSERT INTO nt_l VALUES (1, 10.0), (2, 10.0), (3, 10.0);
+
+statement ok
+INSERT INTO nt_r VALUES (1, 10.4), (2, 10.6), (3, 10.0);
+
+# tol 0.5: row 1 (|0.4|) matches, row 2 (|0.6|) different, row 3 exact
+query IT
+SELECT id, diff_status FROM table_diff('FROM nt_l', 'FROM nt_r', pk := 'id', numeric_tolerance := 0.5)
+ORDER BY id;
+----
+1	identical
+2	different
+3	identical
+
+# without the tolerance every inexact row different
+query IT
+SELECT id, diff_status FROM table_diff('FROM nt_l', 'FROM nt_r', pk := 'id')
+ORDER BY id;
+----
+1	different
+2	different
+3	identical
+
+# tolerance leaves one NULL side as a real difference (not within any band)
+statement ok
+INSERT INTO nt_l VALUES (4, 10.0);
+
+statement ok
+INSERT INTO nt_r VALUES (4, NULL);
+
+query IT
+SELECT id, diff_status FROM table_diff('FROM nt_l', 'FROM nt_r', pk := 'id', numeric_tolerance := 0.5)
+WHERE id = 4;
+----
+4	different
+
+# negative tolerance is rejected
+statement error
+SELECT * FROM table_diff('FROM nt_l', 'FROM nt_r', pk := 'id', numeric_tolerance := -1);
+----
+numeric_tolerance
+
+# ----------------------------------------------------------------------------
+# timestamp_precision: compare timestamps truncated to a common precision
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE tp_l (id INTEGER, ts TIMESTAMP);
+
+statement ok
+CREATE TABLE tp_r (id INTEGER, ts TIMESTAMP);
+
+statement ok
+INSERT INTO tp_l VALUES (1, TIMESTAMP '2021-01-01 08:30:00.123'), (2, TIMESTAMP '2021-01-01 08:30:00');
+
+statement ok
+INSERT INTO tp_r VALUES (1, TIMESTAMP '2021-01-01 08:30:00.999'), (2, TIMESTAMP '2021-01-01 08:30:45');
+
+# truncated to the second: row 1 sub-second drift matches, row 2 (45s apart) different
+query IT
+SELECT id, diff_status FROM table_diff('FROM tp_l', 'FROM tp_r', pk := 'id', timestamp_precision := 'second')
+ORDER BY id;
+----
+1	identical
+2	different
+
+# truncated to the minute: both match
+query IT
+SELECT id, diff_status FROM table_diff('FROM tp_l', 'FROM tp_r', pk := 'id', timestamp_precision := 'minute')
+ORDER BY id;
+----
+1	identical
+2	identical
+
+# ----------------------------------------------------------------------------
+# null_equals_empty: NULL and '' compare equal for VARCHAR columns
+# ----------------------------------------------------------------------------
+statement ok
+CREATE TABLE ne_l (id INTEGER, v VARCHAR);
+
+statement ok
+CREATE TABLE ne_r (id INTEGER, v VARCHAR);
+
+statement ok
+INSERT INTO ne_l VALUES (1, NULL), (2, ''), (3, 'x');
+
+statement ok
+INSERT INTO ne_r VALUES (1, ''), (2, NULL), (3, 'y');
+
+query IT
+SELECT id, diff_status FROM table_diff('FROM ne_l', 'FROM ne_r', pk := 'id', null_equals_empty := true)
+ORDER BY id;
+----
+1	identical
+2	identical
+3	different
+
+# off by default: NULL vs '' is a difference
+query IT
+SELECT id, diff_status FROM table_diff('FROM ne_l', 'FROM ne_r', pk := 'id')
+ORDER BY id;
+----
+1	different
+2	different
+3	different
+
+# ----------------------------------------------------------------------------
+# the diff_data JSON still reports the raw (un-normalized) values that differ
+# ----------------------------------------------------------------------------
+query T
+SELECT diff_data->'amt'->>'left' FROM table_diff('FROM nt_l', 'FROM nt_r', pk := 'id', numeric_tolerance := 0.5)
+WHERE id = 2;
+----
+10.0

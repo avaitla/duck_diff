@@ -14,49 +14,49 @@ CREATE TABLE sdr (id INTEGER, a BIGINT, b VARCHAR, only_r DATE);
 
 # ----------------------------------------------------------------------------
 # one row per column (union), with each side's type and a status
-#   id     INTEGER/INTEGER -> matched
+#   id     INTEGER/INTEGER -> identical
 #   a      INTEGER/BIGINT  -> type_differs
-#   b      VARCHAR/VARCHAR -> matched
+#   b      VARCHAR/VARCHAR -> identical
 #   only_l INTEGER/-       -> left_only
 #   only_r -/DATE          -> right_only
 # ----------------------------------------------------------------------------
 query TTTT
-SELECT column_name, left_type, right_type, status FROM schema_diff('sdl', 'sdr')
+SELECT column_name, left_type, right_type, status FROM schema_diff('FROM sdl', 'FROM sdr')
 ORDER BY column_name;
 ----
 a	INTEGER	BIGINT	type_differs
-b	VARCHAR	VARCHAR	matched
-id	INTEGER	INTEGER	matched
+b	VARCHAR	VARCHAR	identical
+id	INTEGER	INTEGER	identical
 only_l	INTEGER	NULL	left_only
 only_r	NULL	DATE	right_only
 
 # quick "do the schemas match?" check
 query I
-SELECT count(*) FROM schema_diff('sdl', 'sdr') WHERE status <> 'matched';
+SELECT count(*) FROM schema_diff('FROM sdl', 'FROM sdr') WHERE status <> 'identical';
 ----
 3
 
 # identical schema -> everything matches
 query I
-SELECT count(*) FROM schema_diff('sdl', 'sdl') WHERE status <> 'matched';
+SELECT count(*) FROM schema_diff('FROM sdl', 'FROM sdl') WHERE status <> 'identical';
 ----
 0
 
 # works on any relation expression (subquery), not just tables
 query TTTT
 SELECT column_name, left_type, right_type, status
-FROM schema_diff('(SELECT 1 AS id, 2 AS a)', '(SELECT 1 AS id, ''x'' AS a)')
+FROM schema_diff('FROM (SELECT 1 AS id, 2 AS a)', 'FROM (SELECT 1 AS id, ''x'' AS a)')
 ORDER BY column_name;
 ----
 a	INTEGER	VARCHAR	type_differs
-id	INTEGER	INTEGER	matched
+id	INTEGER	INTEGER	identical
 
 # capture mismatched columns into a variable and feed them straight to a diff
 # (no string juggling: list(...) -> variable -> getvariable in columns/ignore)
 statement ok
 SET VARIABLE mismatch = (
   SELECT list(column_name ORDER BY column_name)
-  FROM schema_diff('sdl', 'sdr') WHERE status <> 'matched'
+  FROM schema_diff('FROM sdl', 'FROM sdr') WHERE status <> 'identical'
 );
 
 query T
