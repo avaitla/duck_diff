@@ -7,32 +7,9 @@ exactly which columns changed. It also supports a composite primary key,
 selecting a subset of columns to diff or ignore in diffing, and formatting as json 
 columns or wide typed columns.
 
-## Install
-
-Each [GitHub Release](https://github.com/avaitla/duck_diff/releases) attaches a
-signed binary per platform. Download the one matching your DuckDB version and
-platform, **saved as `duck_diff.duckdb_extension`** (DuckDB derives the
-extension name from the filename), then load it under `-unsigned` (the binaries
-are signed with a third-party key, so unsigned extensions must be enabled — a
-launch flag, not a `SET`):
-
-```sh
-curl -L -o duck_diff.duckdb_extension \
-  https://github.com/avaitla/duck_diff/releases/download/v0.1.0/duck_diff-v1.5.2-osx_arm64.duckdb_extension
-duckdb -unsigned
-```
-```sql
-LOAD 'duck_diff.duckdb_extension';
-FROM table_diff('a', 'b', pk := 'id');
-```
-
-Platforms: `linux_amd64`, `linux_arm64`, `osx_amd64`, `osx_arm64`,
-`windows_amd64`. Prefer to build it yourself? See [Building](#building). Details
-and signature verification: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
-
 ## Quick start
 
-Get a DuckDB shell with `duck_diff` loaded (installed above, or see
+Get a DuckDB shell with `duck_diff` loaded (see [Install](#install) or
 [Building](#building)), then create two sample snapshots and diff them:
 
 ```sql
@@ -93,6 +70,29 @@ FROM table_diff('users_v1', 'users_v2', pk := 'id', wide := true) ORDER BY id;
 │   4   │ right_only  │     NULL     │       10      │ true         │
 └───────┴─────────────┴──────────────┴───────────────┴──────────────┘
 ```
+
+## Install
+
+Each [GitHub Release](https://github.com/avaitla/duck_diff/releases) attaches a
+signed binary per platform. Download the one matching your DuckDB version and
+platform, **saved as `duck_diff.duckdb_extension`** (DuckDB derives the
+extension name from the filename), then load it under `-unsigned` (the binaries
+are signed with a third-party key, so unsigned extensions must be enabled — a
+launch flag, not a `SET`):
+
+```sh
+curl -L -o duck_diff.duckdb_extension \
+  https://github.com/avaitla/duck_diff/releases/download/v0.1.0/duck_diff-v1.5.2-osx_arm64.duckdb_extension
+duckdb -unsigned
+```
+```sql
+LOAD 'duck_diff.duckdb_extension';
+FROM table_diff('a', 'b', pk := 'id');
+```
+
+Platforms: `linux_amd64`, `linux_arm64`, `osx_amd64`, `osx_arm64`,
+`windows_amd64`. Prefer to build it yourself? See [Building](#building). Details
+and signature verification: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
 
 ## Use cases
 
