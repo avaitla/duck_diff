@@ -198,9 +198,10 @@ FROM table_diff('a', 'b', pk := 'id');
 > **Installing without building:** each [GitHub Release](https://github.com/avaitla/duck_diff/releases)
 > attaches signed, per-platform `.duckdb_extension` binaries (see
 > [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)). Download the one for your
-> platform and load it (signed with a third-party key, so launch with
-> `-unsigned` — a startup flag, not a `SET`):
-> ```sql
-> -- duckdb -unsigned
-> LOAD '/path/to/duck_diff-v1.5.2-osx_arm64.duckdb_extension';
+> platform, **saved as `duck_diff.duckdb_extension`** (DuckDB derives the
+> extension name from the filename), then `LOAD` it under `-unsigned`:
+> ```sh
+> curl -L -o duck_diff.duckdb_extension \
+>   https://github.com/avaitla/duck_diff/releases/download/v0.1.0/duck_diff-v1.5.2-osx_arm64.duckdb_extension
+> duckdb -unsigned -c "LOAD 'duck_diff.duckdb_extension'; FROM table_diff('a','b', pk:='id');"
 > ```

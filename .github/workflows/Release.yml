@@ -98,16 +98,17 @@ jobs:
             echo
             echo "### Install"
             echo
-            echo "Download the \`*.duckdb_extension\` for your platform from the assets below, then:"
+            echo "Download the binary for your platform and save it as \`${EXTENSION_NAME}.duckdb_extension\` — DuckDB derives the extension name (and entrypoint) from the filename:"
             echo
             echo '```sh'
-            echo 'duckdb -unsigned'
+            echo "curl -L -o ${EXTENSION_NAME}.duckdb_extension \\\\"
+            echo "  https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${EXTENSION_NAME}-${DUCKDB_VERSION}-<platform>.duckdb_extension"
+            echo "duckdb -unsigned   # allow_unsigned_extensions is a launch flag, not a SET"
             echo '```'
             echo '```sql'
-            echo "LOAD '/path/to/${EXTENSION_NAME}-${DUCKDB_VERSION}-<platform>.duckdb_extension';"
+            echo "LOAD '${EXTENSION_NAME}.duckdb_extension';"
             echo 'FROM table_diff(...);'
             echo '```'
-            echo "(\`allow_unsigned_extensions\` is a launch flag, not a \`SET\` — these are signed with a third-party key.)"
             echo
             echo "### Provenance & integrity"
             echo

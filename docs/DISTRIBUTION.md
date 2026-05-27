@@ -53,14 +53,17 @@ source commit, and the checksums.
 ## Installing (as a user)
 
 Download the `*.duckdb_extension` matching your DuckDB version and platform from
-the release assets, then load it (it's signed with a third-party key, so launch
-with `-unsigned`):
+the release assets and **save it as `duck_diff.duckdb_extension`** — DuckDB
+derives the extension name and entrypoint from the filename, so the name matters.
+It's signed with a third-party key, so launch with `-unsigned`:
 
 ```sh
+curl -L -o duck_diff.duckdb_extension \
+  https://github.com/<owner>/duck_diff/releases/download/v0.1.0/duck_diff-v1.5.2-osx_arm64.duckdb_extension
 duckdb -unsigned
 ```
 ```sql
-LOAD '/path/to/duck_diff-v1.5.2-osx_arm64.duckdb_extension';
+LOAD 'duck_diff.duckdb_extension';
 FROM table_diff('a', 'b', pk := 'id');
 ```
 From a client library, enable unsigned extensions in the connection config (e.g.
