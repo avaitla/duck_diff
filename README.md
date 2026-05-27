@@ -85,8 +85,11 @@ curl -L -o duck_diff.duckdb_extension \
   https://github.com/avaitla/duck_diff/releases/download/v0.1.0/duck_diff-v1.5.2-osx_arm64.duckdb_extension
 duckdb -unsigned
 ```
+
+Load it with the full filepath:
+
 ```sql
-LOAD 'duck_diff.duckdb_extension';
+LOAD '/Users/avaitla/duck_diff.duckdb_extension';
 FROM table_diff('a', 'b', pk := 'id');
 ```
 
