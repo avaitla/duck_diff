@@ -38,9 +38,37 @@ FROM table_diff('users_v1', 'users_v2', pk := 'id') ORDER BY id;
 └───────┴─────────────┴──────────────┴──────────────────────────────────────┘
 ```
 ```sql
--- counts + percentages, or a single yes/no
+-- counts + percentages
 FROM table_diff_summary('users_v1', 'users_v2', pk := 'id');
+```
+```
+┌───────────┬───────────┬─────────────┬──────────────┬─────────┬─────────────┬─────────────┬───────────────┬────────────────┐
+│ n_matched │ n_differs │ n_left_only │ n_right_only │ n_total │ pct_matched │ pct_differs │ pct_left_only │ pct_right_only │
+├───────────┼───────────┼─────────────┼──────────────┼─────────┼─────────────┼─────────────┼───────────────┼────────────────┤
+│     1     │     1     │      1      │      1       │    4    │    25.0     │    25.0     │     25.0      │      25.0      │
+└───────────┴───────────┴─────────────┴──────────────┴─────────┴─────────────┴─────────────┴───────────────┴────────────────┘
+```
+```sql
+-- or a single yes/no
 SELECT tables_equal('users_v1', 'users_v2', pk := 'id');   -- false
+```
+
+Prefer columns side by side instead of JSON? Add `wide := true` to expand each
+compared column into `<col>_left` / `<col>_right` / `<col>_diff`:
+
+```sql
+SELECT id, diff_status, credits_left, credits_right, credits_diff
+FROM table_diff('users_v1', 'users_v2', pk := 'id', wide := true) ORDER BY id;
+```
+```
+┌───────┬─────────────┬──────────────┬───────────────┬──────────────┐
+│  id   │ diff_status │ credits_left │ credits_right │ credits_diff │
+├───────┼─────────────┼──────────────┼───────────────┼──────────────┤
+│   1   │ differs     │      100     │      120      │ true         │
+│   2   │ matched     │       50     │       50      │ false        │
+│   3   │ left_only   │       75     │     NULL      │ true         │
+│   4   │ right_only  │     NULL     │       10      │ true         │
+└───────┴─────────────┴──────────────┴───────────────┴──────────────┘
 ```
 
 ## Use cases
@@ -65,37 +93,29 @@ See [docs/functions.md](docs/functions.md) for the full reference.
 | `tables_equal(left, right, pk := …)` | BOOLEAN | true iff every key matched |
 | `schema_diff(left, right)` | table | per-column name/type comparison: `column_name`, `left_type`, `right_type`, `status` |
 
-## Key features
+## `table_diff` parameters
 
-- **Keys**: `pk := 'id'` (single) or `pk := 'region', additional_pk := ['id']`
-  (composite). Key columns are emitted under their **original names**, so you can
-  join the diff back to the source: `... JOIN orders USING (region, id)`.
-- **Status**: `matched`, `differs`, `left_only`, `right_only`. NULL-safe
-  comparison (`IS NOT DISTINCT FROM`, so `NULL` equals `NULL`).
-- **`diff_data`** (JSON): for `differs` rows, only the columns that changed, as
-  `{"col": {"left": …, "right": …}}`, with native types preserved.
-- **Wide mode** (`wide := true`): expand each compared column into
-  `<c>_left` / `<c>_right` / `<c>_diff` (and context into `<c>_left`/`<c>_right`)
-  as real typed columns instead of JSON.
-- **Schema policy**: `compare := 'strict'` (default — relations must match) or
-  `'intersect'` (compare only common, same-typed columns). Refine with
-  `columns := [...]` / `ignore := [...]`.
-- **Context**: `context := ['name']` pulls those columns from both sides into
-  `left_context` / `right_context` JSON columns — handy for understanding why a
-  row is `left_only`/`right_only`. `context := ['*']` pulls in every non-key
-  column not already compared; with `wide := true` that yields a full
-  side-by-side of all columns for dashboards.
-- **Collisions**: meta columns default to a `diff_` prefix; override with
-  `prefix := 'cmp_'` if a key column would clash.
-- **Schema diff + reuse**: `schema_diff('a','b')` reports per-column name/type
-  matches. Feed the result straight into a diff via a variable (a named argument
-  can't hold a subquery, so capture the list and pass `getvariable`):
-  ```sql
-  SET VARIABLE mismatch = (
-    SELECT list(column_name) FROM schema_diff('a','b') WHERE status <> 'matched'
-  );
-  FROM table_diff('a','b', pk := 'id', ignore := getvariable('mismatch'));
-  ```
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `left`, `right` | VARCHAR | Relation expressions — a table/view name, a table function, or a `(subquery)`. |
+| `pk` | VARCHAR \| LIST | **Required.** Primary key column(s); a string or a list. |
+| `additional_pk` | LIST | Extra key columns appended to `pk` (composite key). |
+| `compare` | VARCHAR | `'strict'` (default; identical column names+types required) or `'intersect'` (only common, same-typed columns). |
+| `columns` | LIST | Restrict the compared (non-key) columns to this list. |
+| `ignore` | LIST | Exclude these columns from comparison. |
+| `context` | LIST | Pull these columns from both sides into `left_context`/`right_context`; use `['*']` for every non-key, non-compared column. |
+| `wide` | BOOLEAN | Expand each compared column into `<c>_left`/`<c>_right`/`<c>_diff` instead of JSON `diff_data`. |
+| `prefix` | VARCHAR | Prefix for the meta columns (default `'diff_'`); change it if a key column would collide. |
+
+**Output:** the key column(s) under their original names (so you can
+`JOIN … USING (…)`), then `diff_status` (`matched` / `differs` / `left_only` /
+`right_only`), then `diff_data` — a JSON object of only the changed columns,
+`{"col": {"left": …, "right": …}}`, types preserved (or the expanded
+`_left`/`_right`/`_diff` columns in wide mode). Comparison is NULL-safe
+(`IS NOT DISTINCT FROM`, so `NULL` equals `NULL`).
+
+See [docs/functions.md](docs/functions.md) for the full reference (all functions,
+`schema_diff`, and recipes like deriving `ignore`/`columns` from a query).
 
 ## Diffing external sources (BigQuery, Postgres, CSV, …)
 

@@ -71,3 +71,44 @@ LOAD duck_diff;
 
 FROM table_diff('a', 'b', pk := 'id');
 ```
+
+## Verifying a download
+
+The release binaries are signed with the key whose public half is committed at
+[`duck_diff-signing-key.pub`](../duck_diff-signing-key.pub):
+
+```
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr/53PojMEHkMQrGKNccE
+dEibup8q5EiS5XSZT7zWcqB1KWurGWX4MI8tQ368TRN93N8cqDdEYfXlSKYy2jYO
+kzBKTN2rJ17EFfHUxeF65yXI5TuX7Do31sxFWQ7pVyGfKdNWydvzYnsW0tsVscvE
+nHsbqG1ZheaB97qWBVg8GQMlNrYr/7aciIUoxmmeqc2NlL8wRXu3I1P2zur5tJEz
+ZhpG5i6xBlwurBt6Uz96x6DE4m1VVSTMjK+8H0WvcmPXXIhN4+iEO/Guj4Lhy82B
+cRhjdKXyVWVNBehqHLd9hV7i44Gt2RDBrrPWDKgEPblajXpyz3EOTeYG3rmLDDgb
+9QIDAQAB
+-----END PUBLIC KEY-----
+```
+
+A DuckDB extension's signature is the **last 256 bytes**; the signed payload is
+the SHA256 composite of everything before it (1 MiB chunks each hashed, then the
+concatenation hashed — DuckDB's `compute-extension-hash.sh`). To verify a
+downloaded binary:
+
+```sh
+# fetch + decompress one platform build
+curl -sL https://<owner>.github.io/duck_diff/v1.5.2/<platform>/duck_diff.duckdb_extension.gz \
+  | gunzip > duck_diff.duckdb_extension
+
+size=$(wc -c < duck_diff.duckdb_extension)
+head -c $((size - 256)) duck_diff.duckdb_extension > body
+tail -c 256             duck_diff.duckdb_extension > sig
+
+: > chunks
+split -b 1M body seg_
+for f in seg_*; do openssl dgst -binary -sha256 "$f" >> chunks; rm "$f"; done
+openssl dgst -binary -sha256 chunks > hash
+
+openssl pkeyutl -verify -pubin -inkey duck_diff-signing-key.pub \
+  -sigfile sig -in hash -pkeyopt digest:sha256
+# -> Signature Verified Successfully
+```
