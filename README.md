@@ -29,37 +29,39 @@ FROM table_diff('(SELECT * FROM orders WHERE region = ''US'')', 'orders_v2', pk 
 
 ## Quick start
 
-Build it from source (the repo vendors DuckDB and the build tooling as
-submodules):
+Get a DuckDB shell with `duck_diff` loaded (see [Building](#building)), then
+create two sample snapshots and diff them:
 
-```sh
-git clone --recurse-submodules https://github.com/avaitla/duck_diff
-cd duck_diff
-GEN=ninja make            # first build compiles DuckDB; needs cmake + ninja
+```sql
+CREATE TABLE users_v1 AS SELECT * FROM (VALUES
+    (1, 'Ada',   'ada@x.com',   100),
+    (2, 'Linus', 'linus@x.com',  50),
+    (3, 'Grace', 'grace@x.com',  75)
+) t(id, name, email, credits);
+
+CREATE TABLE users_v2 AS SELECT * FROM (VALUES
+    (1, 'Ada',   'ada@x.com',   120),   -- credits changed
+    (2, 'Linus', 'linus@x.com',  50),   -- unchanged
+    (4, 'Mike',  'mike@x.com',   10)    -- new (id 3 removed)
+) t(id, name, email, credits);
+
+FROM table_diff('users_v1', 'users_v2', pk := 'id') ORDER BY id;
 ```
-
-This produces a DuckDB shell with the extension **already loaded**, plus a
-loadable extension binary:
-
-```sh
-./build/release/duckdb     # duck_diff is preloaded — just call the functions
+```
+┌───────┬─────────────┬──────────────┬──────────────────────────────────────┐
+│  id   │ diff_status │ diff_columns │              diff_data               │
+├───────┼─────────────┼──────────────┼──────────────────────────────────────┤
+│   1   │ differs     │ [credits]    │ {"credits":{"left":100,"right":120}} │
+│   2   │ matched     │ NULL         │ NULL                                 │
+│   3   │ left_only   │ NULL         │ NULL                                 │
+│   4   │ right_only  │ NULL         │ NULL                                 │
+└───────┴─────────────┴──────────────┴──────────────────────────────────────┘
 ```
 ```sql
-FROM table_diff('orders_before', 'orders_after', pk := 'order_id');
+-- counts + percentages, or a single yes/no
+FROM table_diff_summary('users_v1', 'users_v2', pk := 'id');
+SELECT tables_equal('users_v1', 'users_v2', pk := 'id');   -- false
 ```
-
-To load the built extension into a separate DuckDB (it's locally built, hence
-unsigned):
-
-```sh
-duckdb -unsigned
-```
-```sql
-LOAD 'build/release/extension/duck_diff/duck_diff.duckdb_extension';
-FROM table_diff('a', 'b', pk := 'id');
-```
-
-(Already cloned without submodules? `git submodule update --init --recursive`.)
 
 ## Use cases
 
@@ -163,13 +165,40 @@ single query you can also force one shared scan with a `WITH x AS MATERIALIZED
 
 ## Building
 
+The repo vendors DuckDB and the build tooling as submodules, so a clone +
+`make` produces a DuckDB shell with `duck_diff` preloaded:
+
 ```sh
-GEN=ninja make    # build extension + a duckdb with it loaded (first build is slow)
+git clone --recurse-submodules https://github.com/avaitla/duck_diff
+cd duck_diff
+GEN=ninja make            # first build compiles DuckDB; needs cmake + ninja
+./build/release/duckdb    # this shell already has duck_diff loaded
+
 build/release/test/unittest "test/sql/*"   # run the SQL test suite
 ```
+(Cloned without submodules? `git submodule update --init --recursive`.)
 
 The extension generates SQL using `json_object` / `json_merge_patch`, so the
 bundled `json` extension is required (built in automatically for tests).
+
+### Using it in another DuckDB
+
+The build also emits a loadable binary at
+`build/release/extension/duck_diff/duck_diff.duckdb_extension`. It's locally
+built (unsigned), so load it with unsigned extensions enabled:
+
+```sh
+duckdb -unsigned
+```
+```sql
+LOAD 'build/release/extension/duck_diff/duck_diff.duckdb_extension';
+FROM table_diff('a', 'b', pk := 'id');
+```
+
+> **Installing without building:** `INSTALL` needs prebuilt, per-platform
+> binaries — you can't `INSTALL` straight from this source repo. Once the
+> binaries are published (DuckDB community extensions, or self-hosted), it
+> becomes `INSTALL duck_diff FROM community; LOAD duck_diff;`.
 
 ## Status
 
