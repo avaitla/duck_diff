@@ -101,12 +101,15 @@ and signature verification: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
 
 - **Refactoring SQL** (possibly even onto a new database) and ensuring the
   results are the same.
-- **Capturing what changed** between snapshots or points in time.
+- **Capturing the differences** between snapshots or points in time.
 - **Replication integrity** — spot-check that a replica matches its source, in
   the spirit of `pt-table-checksum`.
 - **Safe AI-assisted changes** — give a coding agent like Claude a ground-truth
   check that a refactor or data-modeling change produced identical results, so
   it can iterate on transformations safely instead of guessing.
+
+DuckDB is a great fit since it has connectors to many databases and can run 
+locally and within customers VPC/private environment.
 
 ## Functions
 
