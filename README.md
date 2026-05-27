@@ -25,7 +25,7 @@ CREATE TABLE users_v2 AS SELECT * FROM (VALUES
     (4, 'Mike',  'mike@x.com',   10)    -- new (id 3 removed)
 ) t(id, name, email, credits);
 
-FROM table_diff('users_v1', 'users_v2', pk := 'id') ORDER BY id;
+SELECT * FROM table_diff('users_v1', 'users_v2', pk := 'id') ORDER BY id;
 ```
 ```
 ┌───────┬─────────────┬──────────────┬──────────────────────────────────────┐
@@ -39,7 +39,7 @@ FROM table_diff('users_v1', 'users_v2', pk := 'id') ORDER BY id;
 ```
 ```sql
 -- counts + percentages
-FROM table_diff_summary('users_v1', 'users_v2', pk := 'id');
+SELECT * FROM table_diff_summary('users_v1', 'users_v2', pk := 'id');
 ```
 ```
 ┌───────────┬───────────┬─────────────┬──────────────┬─────────┬─────────────┬─────────────┬───────────────┬────────────────┐
@@ -87,7 +87,7 @@ duckdb -unsigned
 ```
 ```sql
 LOAD 'duck_diff.duckdb_extension';
-FROM table_diff('a', 'b', pk := 'id');
+SELECT * FROM table_diff('a', 'b', pk := 'id');
 ```
 
 Platforms: `linux_amd64`, `linux_arm64`, `osx_amd64`, `osx_arm64`,
@@ -150,7 +150,7 @@ the inner quotes need no escaping:
 INSTALL bigquery FROM community; LOAD bigquery;
 ATTACH 'project=my-project' AS bq (TYPE bigquery, READ_ONLY);  -- uses local ADC
 
-FROM table_diff(
+SELECT * FROM table_diff(
   $$ bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260101') $$,
   $$ bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260526') $$,
   pk := 'id',
@@ -173,8 +173,8 @@ CREATE TABLE IF NOT EXISTS jan AS
 CREATE TABLE IF NOT EXISTS may AS
   SELECT * FROM bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260526');
 
-FROM table_diff_summary('jan', 'may', pk := 'id');                 -- counts + percentages
-FROM table_diff('jan', 'may', pk := 'id') WHERE diff_status='differs' LIMIT 20;
+SELECT * FROM table_diff_summary('jan', 'may', pk := 'id');         -- counts + percentages
+SELECT * FROM table_diff('jan', 'may', pk := 'id') WHERE diff_status='differs' LIMIT 20;
 -- which columns change most often:
 SELECT col, count(*) FROM (
   SELECT unnest(diff_columns) AS col
@@ -215,7 +215,7 @@ duckdb -unsigned
 ```
 ```sql
 LOAD 'build/release/extension/duck_diff/duck_diff.duckdb_extension';
-FROM table_diff('a', 'b', pk := 'id');
+SELECT * FROM table_diff('a', 'b', pk := 'id');
 ```
 
 > **Installing without building:** each [GitHub Release](https://github.com/avaitla/duck_diff/releases)
@@ -226,5 +226,5 @@ FROM table_diff('a', 'b', pk := 'id');
 > ```sh
 > curl -L -o duck_diff.duckdb_extension \
 >   https://github.com/avaitla/duck_diff/releases/download/v0.1.0/duck_diff-v1.5.2-osx_arm64.duckdb_extension
-> duckdb -unsigned -c "LOAD 'duck_diff.duckdb_extension'; FROM table_diff('a','b', pk:='id');"
+> duckdb -unsigned -c "LOAD 'duck_diff.duckdb_extension'; SELECT * FROM table_diff('a','b', pk:='id');"
 > ```
