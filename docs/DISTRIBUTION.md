@@ -44,6 +44,20 @@ If the secret is absent the workflow still publishes, just with an unsigned
 GitHub → repo **Settings → Pages → Build and deployment → Source = GitHub
 Actions**.
 
+### 4. Allow release tags to deploy
+
+The `github-pages` environment only permits deployments from the default branch
+by default — but releases run on a **tag** ref, so the deploy is rejected at the
+environment gate (the job fails in ~2s with no steps). Add a tag policy so `v*`
+tags may deploy:
+
+```sh
+gh api -X POST repos/<owner>/duck_diff/environments/github-pages/deployment-branch-policies \
+  -f name='v*' -f type='tag'
+```
+(Or **Settings → Environments → github-pages → Deployment branches and tags →
+Add → Tag → `v*`**.)
+
 ## Releasing a new version
 
 Once the one-time setup above is done, every release is just a tag:
