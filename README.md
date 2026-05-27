@@ -1,6 +1,6 @@
 # duck_diff
 
-A DuckDB extension for diffing two relations on a primary key. Given a
+A DuckDB extension for diffing two relations (tables, sql queries etc) off a primary key. Given a
 "left" and a "right" relation, it reports — per key — whether the row
 **matched**, **differs**, or exists only on one side, and (for differing rows)
 exactly which columns changed. It also supports a composite primary key, 
