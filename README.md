@@ -27,6 +27,40 @@ FROM table_diff('read_csv(''before.csv'')', 'read_csv(''after.csv'')', pk := 'id
 FROM table_diff('(SELECT * FROM orders WHERE region = ''US'')', 'orders_v2', pk := 'id');
 ```
 
+## Quick start
+
+Build it from source (the repo vendors DuckDB and the build tooling as
+submodules):
+
+```sh
+git clone --recurse-submodules https://github.com/avaitla/duck_diff
+cd duck_diff
+GEN=ninja make            # first build compiles DuckDB; needs cmake + ninja
+```
+
+This produces a DuckDB shell with the extension **already loaded**, plus a
+loadable extension binary:
+
+```sh
+./build/release/duckdb     # duck_diff is preloaded — just call the functions
+```
+```sql
+FROM table_diff('orders_before', 'orders_after', pk := 'order_id');
+```
+
+To load the built extension into a separate DuckDB (it's locally built, hence
+unsigned):
+
+```sh
+duckdb -unsigned
+```
+```sql
+LOAD 'build/release/extension/duck_diff/duck_diff.duckdb_extension';
+FROM table_diff('a', 'b', pk := 'id');
+```
+
+(Already cloned without submodules? `git submodule update --init --recursive`.)
+
 ## Use cases
 
 - **Refactoring SQL** (possibly even onto a new database) and ensuring the
