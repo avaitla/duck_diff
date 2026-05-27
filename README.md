@@ -242,4 +242,4 @@ SELECT * FROM table_diff('FROM a', 'FROM b', pk := 'id');
 
 ## License
 
-[MIT](LICENSE) © Anil Vaitla. Bundles DuckDB, which is also MIT-licensed.
+[MIT](LICENSE) Bundles DuckDB, which is also MIT-licensed.
