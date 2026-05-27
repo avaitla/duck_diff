@@ -105,6 +105,7 @@ jobs:
             echo "  https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${EXTENSION_NAME}-${DUCKDB_VERSION}-<platform>.duckdb_extension"
             echo "duckdb -unsigned   # allow_unsigned_extensions is a launch flag, not a SET"
             echo '```'
+            echo "Ensure you use the Full File path below:"
             echo '```sql'
             echo "LOAD '${EXTENSION_NAME}.duckdb_extension';"
             echo 'FROM table_diff(...);'
