@@ -35,20 +35,36 @@ unsigned (zeroed) signature slot.
 
 ## Releasing a new version
 
-```sh
-git checkout main && git pull
-gh release create v0.2.0 --target main --title "duck_diff v0.2.0" --notes "see workflow"
-```
+The version **is the git tag** — there's no version file to edit. The build
+stamps the extension version from the tag (`git describe`). So a release is:
 
-Publishing the release fires `Release.yml`, which builds every platform, signs
-each binary, attaches them as `duck_diff-<duckdb_version>-<platform>.duckdb_extension`
-+ `SHA256SUMS`, and rewrites the release notes with install instructions, the
-source commit, and the checksums.
+1. **Land your changes on `main`** (merge the PR, or push).
+2. **Pick the next version tag**, SemVer-style `vMAJOR.MINOR.PATCH`:
+   - patch (`v0.1.1`) — bug fixes;
+   - minor (`v0.2.0`) — new, backward-compatible features;
+   - major (`v1.0.0`) — breaking changes.
+   Check the latest with `gh release list` (or the Releases page) and increment.
+3. **Cut the release** (tag + publish in one step):
+   ```sh
+   git checkout main && git pull
+   gh release create v0.2.0 --target main --title "duck_diff v0.2.0" --notes "see workflow"
+   ```
+   (Or GitHub UI → **Releases → Draft a new release** → create tag `v0.2.0` on
+   `main` → **Publish**.)
+4. **Done** — publishing fires `Release.yml`, which builds every platform, signs
+   each binary, attaches them as
+   `duck_diff-<duckdb_version>-<platform>.duckdb_extension` + `SHA256SUMS`, and
+   rewrites the release notes with install instructions, the source commit, and
+   the checksums. Watch it with `gh run watch` if you like.
 
-> **Version tags** (`v0.2.0`) name the release. The **DuckDB** target is pinned
-> in `Release.yml` and `MainDistributionPipeline.yml` (`DUCKDB_VERSION` /
-> `duckdb_version`) — bump those together when moving to a new DuckDB release.
-> `workflow_dispatch` runs the build/sign manually but won't touch release notes.
+> **Re-cutting the same version:** if a release run fails and you've fixed it,
+> `gh release delete vX.Y.Z --yes --cleanup-tag` then recreate it.
+>
+> **DuckDB target** (separate from the extension version) is pinned in
+> `Release.yml` and `MainDistributionPipeline.yml` (`DUCKDB_VERSION` /
+> `duckdb_version`); bump both together only when moving to a new DuckDB
+> release. `workflow_dispatch` runs the build/sign manually but won't touch
+> release notes (that step is gated to real release events).
 
 ## Installing (as a user)
 
