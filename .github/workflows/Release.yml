@@ -55,12 +55,11 @@ jobs:
           path: artifacts
           pattern: ${{ env.EXTENSION_NAME }}-*-extension-*
 
-      - name: Sign each binary and lay out the extension repository
+      - name: Sign each binary into a build tree
         env:
           DUCKDB_EXTENSION_SIGNING_PK: ${{ secrets.DUCKDB_EXTENSION_SIGNING_PK }}
         run: |
           set -euo pipefail
-          mkdir -p _site
           shopt -s nullglob
           if [ -n "${DUCKDB_EXTENSION_SIGNING_PK:-}" ]; then
             printf '%s' "$DUCKDB_EXTENSION_SIGNING_PK" > private.pem
@@ -87,22 +86,54 @@ jobs:
               : > ext.sign   # no key -> leave an empty (zeroed) signature slot
             fi
             truncate -s 256 ext.sign
-            mkdir -p "_site/${DUCKDB_VERSION}/${arch}"
-            cat body.bin ext.sign | gzip > "_site/${DUCKDB_VERSION}/${arch}/${EXTENSION_NAME}.duckdb_extension.gz"
+            mkdir -p "build_tree/${DUCKDB_VERSION}/${arch}"
+            cat body.bin ext.sign | gzip > "build_tree/${DUCKDB_VERSION}/${arch}/${EXTENSION_NAME}.duckdb_extension.gz"
             rm -f body.bin ext.hash ext.sign
-            echo "published ${DUCKDB_VERSION}/${arch}"
+            echo "signed ${DUCKDB_VERSION}/${arch}"
           done
           rm -f private.pem
-          printf 'duck_diff extension repository (DuckDB %s)\n' "$DUCKDB_VERSION" > _site/index.html
+          ( cd build_tree && find . -name '*.duckdb_extension.gz' | sort | sed 's|^\./||' \
+              | xargs sha256sum > SHA256SUMS )
+          echo "${GITHUB_SHA}" > build_tree/COMMIT
+          echo "=== SHA256SUMS ==="; cat build_tree/SHA256SUMS
 
-      - name: Compute checksums and provenance
+      - name: Accumulate into the gh-pages store (versioned + latest) and assemble the site
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
-          ( cd _site && find . -name '*.duckdb_extension.gz' | sort | sed 's|^\./||' \
-              | xargs sha256sum > SHA256SUMS )
-          echo "${GITHUB_SHA}" > _site/COMMIT
-          echo "=== SHA256SUMS ==="; cat _site/SHA256SUMS
-          echo "=== built from commit ${GITHUB_SHA} ==="
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git"
+          rm -rf store
+          if git clone --quiet --depth 1 --branch gh-pages "$REPO_URL" store 2>/dev/null; then
+            echo "cloned existing gh-pages store"
+          else
+            echo "initializing new gh-pages store"
+            mkdir store
+            ( cd store && git init -q && git remote add origin "$REPO_URL" && git checkout -q --orphan gh-pages )
+          fi
+          # publish this build under its version tag and refresh 'latest'
+          rm -rf "store/${VER}" "store/latest"
+          mkdir -p "store/${VER}" "store/latest"
+          cp -R build_tree/. "store/${VER}/"
+          cp -R build_tree/. "store/latest/"
+          # simple index listing the available versions
+          ( cd store
+            {
+              echo "<h1>duck_diff extension repository</h1><ul>"
+              echo "<li><a href=\"latest/\">latest</a></li>"
+              for d in */ ; do d="${d%/}"; [ "$d" = "latest" ] && continue; echo "<li><a href=\"$d/\">$d</a></li>"; done | sort -r
+              echo "</ul>"
+            } > index.html )
+          ( cd store
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -q -m "Publish ${VER} (DuckDB ${DUCKDB_VERSION}, ${GITHUB_SHA})" || echo "nothing to commit"
+            git push -q origin gh-pages )
+          # deploy the full accumulated tree (all versions + latest)
+          rm -rf _site && mkdir _site && cp -R store/. _site/ && rm -rf _site/.git
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -121,9 +152,10 @@ jobs:
           TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          gh release upload "$TAG" _site/SHA256SUMS --clobber
+          gh release upload "$TAG" build_tree/SHA256SUMS --clobber
+          BASE="https://${GITHUB_REPOSITORY_OWNER}.github.io/${EXTENSION_NAME}"
           {
-            echo "First release of **duck_diff** — a DuckDB extension for diffing two relations on a primary key."
+            echo "**duck_diff** — a DuckDB extension for diffing two relations on a primary key."
             echo
             echo "**Functions:** \`table_diff\`, \`table_diff_summary\`, \`tables_equal\`, \`schema_diff\`."
             echo
@@ -135,7 +167,9 @@ jobs:
             echo 'duckdb -unsigned'
             echo '```'
             echo '```sql'
-            echo "SET custom_extension_repository = 'https://${GITHUB_REPOSITORY_OWNER}.github.io/${EXTENSION_NAME}';"
+            echo "-- pin this release"
+            echo "SET custom_extension_repository = '${BASE}/${TAG}';"
+            echo "-- or always track the newest:  '${BASE}/latest'"
             echo 'INSTALL duck_diff;'
             echo 'LOAD duck_diff;'
             echo '```'
@@ -146,7 +180,7 @@ jobs:
             echo "Verify a download against the public key (\`duck_diff-signing-key.pub\`) — see [docs/DISTRIBUTION.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/DISTRIBUTION.md). SHA256 of each published binary:"
             echo
             echo '```'
-            cat _site/SHA256SUMS
+            cat build_tree/SHA256SUMS
             echo '```'
           } > notes.md
           gh release edit "$TAG" --notes-file notes.md

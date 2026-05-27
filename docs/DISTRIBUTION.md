@@ -74,24 +74,27 @@ Publishing the release fires `Release.yml`, which:
 1. builds `duck_diff` for every platform against the pinned DuckDB version;
 2. signs each binary (overwriting its 256-byte signature slot) with the
    `DUCKDB_EXTENSION_SIGNING_PK` secret;
-3. publishes the tree + `SHA256SUMS` + `COMMIT` to GitHub Pages;
-4. attaches `SHA256SUMS` to the release and rewrites the release notes to inline
-   the exact commit hash and per-binary checksums.
+3. signs each binary (overwriting its 256-byte signature slot) with the
+   `DUCKDB_EXTENSION_SIGNING_PK` secret;
+4. accumulates the build onto the **`gh-pages` branch** under `<tag>/…` and
+   refreshes `latest/…` (old versions stay live), then deploys the full tree;
+5. attaches `SHA256SUMS` to the release and rewrites the notes with the exact
+   commit hash and per-binary checksums.
 
-Users always get the **latest** release's binaries — `INSTALL … FROM` keys only
-on `<duckdb_version>/<platform>`, so each release overwrites that path. There's
-nothing else to do; the same install command keeps working.
+So `…/duck_diff/<tag>` pins a release and `…/duck_diff/latest` tracks newest;
+nothing to clean up between releases.
 
-> **Version tags** set the extension version embedded in the binary; use
-> SemVer-ish tags (`v0.2.0`). The **DuckDB** target is pinned separately in
-> `Release.yml` and `MainDistributionPipeline.yml` (`DUCKDB_VERSION` /
-> `duckdb_version`) — bump those together only when moving to a new DuckDB
-> release (users on that DuckDB version then re-`INSTALL`). Pages serves the
-> versions built by the latest run, so to keep multiple DuckDB versions live you
-> would merge prior `_site` content before deploying.
+> **Version tags** set the extension version; use SemVer-ish tags (`v0.2.0`).
+> The **DuckDB** target is pinned separately in `Release.yml` and
+> `MainDistributionPipeline.yml` (`DUCKDB_VERSION` / `duckdb_version`) — bump
+> those together only when moving to a new DuckDB release.
 >
-> `workflow_dispatch` runs the build/publish manually, but it won't rewrite
-> release notes (that step only runs on a real release event).
+> The `gh-pages` branch is the accumulating store; the deploy publishes its full
+> contents each run, so every previously released version remains installable.
+>
+> `workflow_dispatch` runs the build/publish manually (publishing under the
+> branch name), but it won't rewrite release notes (that step only runs on a
+> real release event).
 
 ## Installing (as a user)
 
@@ -99,16 +102,24 @@ DuckDB version and platform must match a published build. `allow_unsigned_extens
 is a **startup flag**, not a runtime `SET` — launch DuckDB with `-unsigned`
 (CLI) or `config={'allow_unsigned_extensions': True}` (client libraries):
 
+Each release is published under its version tag and mirrored to `latest`:
+
+- pin a release: `https://<owner>.github.io/duck_diff/v0.1.0`
+- always newest: `https://<owner>.github.io/duck_diff/latest`
+
 ```sh
 duckdb -unsigned
 ```
 ```sql
-SET custom_extension_repository = 'https://<owner>.github.io/duck_diff';
+SET custom_extension_repository = 'https://<owner>.github.io/duck_diff/latest';
 INSTALL duck_diff;
 LOAD duck_diff;
 
 FROM table_diff('a', 'b', pk := 'id');
 ```
+
+(DuckDB appends `/<duckdb_version>/<platform>/…` automatically, so the base URL
+ends at the version or `latest` — never include the DuckDB version yourself.)
 
 ## Verifying a download
 

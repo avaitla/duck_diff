@@ -202,6 +202,7 @@ FROM table_diff('a', 'b', pk := 'id');
 > third-party key, so launch DuckDB with `-unsigned` (it's a startup flag, not a
 > `SET`), then:
 > ```sql
-> SET custom_extension_repository = 'https://avaitla.github.io/duck_diff';
+> -- newest release, or pin one with .../duck_diff/v0.1.0
+> SET custom_extension_repository = 'https://avaitla.github.io/duck_diff/latest';
 > INSTALL duck_diff; LOAD duck_diff;
 > ```
