@@ -44,20 +44,40 @@ If the secret is absent the workflow still publishes, just with an unsigned
 GitHub → repo **Settings → Pages → Build and deployment → Source = GitHub
 Actions**.
 
-## Releasing
+## Releasing a new version
 
-Cut a GitHub Release (e.g. tag `v0.1.0`). The workflow:
+Once the one-time setup above is done, every release is just a tag:
 
-1. builds `duck_diff` against the pinned DuckDB version for each platform;
-2. signs each binary by overwriting its 256-byte signature slot;
-3. publishes the tree to GitHub Pages.
+```sh
+# 1. land your changes on main (PR or push), then:
+git checkout main && git pull
+# 2. cut a release with the next version tag
+gh release create v0.2.0 --target main --title "duck_diff v0.2.0" --notes "see workflow"
+```
 
-`workflow_dispatch` lets you run it manually too.
+Publishing the release fires `Release.yml`, which:
 
-> The pinned DuckDB version lives in both `Release.yml` and
-> `MainDistributionPipeline.yml` (`DUCKDB_VERSION` / `duckdb_version`). Bump them
-> together. Pages publishes the versions built in the *latest* run, so to serve
-> multiple DuckDB versions you'd merge old content into `_site` before deploying.
+1. builds `duck_diff` for every platform against the pinned DuckDB version;
+2. signs each binary (overwriting its 256-byte signature slot) with the
+   `DUCKDB_EXTENSION_SIGNING_PK` secret;
+3. publishes the tree + `SHA256SUMS` + `COMMIT` to GitHub Pages;
+4. attaches `SHA256SUMS` to the release and rewrites the release notes to inline
+   the exact commit hash and per-binary checksums.
+
+Users always get the **latest** release's binaries — `INSTALL … FROM` keys only
+on `<duckdb_version>/<platform>`, so each release overwrites that path. There's
+nothing else to do; the same install command keeps working.
+
+> **Version tags** set the extension version embedded in the binary; use
+> SemVer-ish tags (`v0.2.0`). The **DuckDB** target is pinned separately in
+> `Release.yml` and `MainDistributionPipeline.yml` (`DUCKDB_VERSION` /
+> `duckdb_version`) — bump those together only when moving to a new DuckDB
+> release (users on that DuckDB version then re-`INSTALL`). Pages serves the
+> versions built by the latest run, so to keep multiple DuckDB versions live you
+> would merge prior `_site` content before deploying.
+>
+> `workflow_dispatch` runs the build/publish manually, but it won't rewrite
+> release notes (that step only runs on a real release event).
 
 ## Installing (as a user)
 
