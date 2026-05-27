@@ -40,12 +40,16 @@ FROM table_diff('FROM users_v1', 'FROM users_v2', pk := 'id') ORDER BY id;
 └────┴─────────────┴──────────────────────────────────────┴──────────────┴───────────────┴─────────────────────┘
 ```
 
-Every result row has both the JSON `diff_data` (only the changed columns) and,
-for each compared column, expanded `<c>_left` / `<c>_right` (native types) /
-`<c>_diff_status` (`identical` / `different` / `left_only` / `right_only`). Pick
-whichever you need — `SELECT diff_data` for the compact summary, or the
-`*_left`/`*_right`/`*_diff_status` columns to filter and compute on values
-directly. The differing column names are just `json_keys(diff_data)`.
+Each row gives you two views of the same diff — pick whichever fits:
+
+- **`diff_data`** — a compact JSON of just the changed columns,
+  `{"col": {"left": …, "right": …}}` (and `json_keys(diff_data)` lists which
+  columns changed).
+- **Expanded columns** — for each compared column: `<c>_left`, `<c>_right`
+  (native types), and `<c>_diff_status` (`identical` / `different` /
+  `left_only` / `right_only`). Real typed columns, so you can filter and compute
+  on them directly.
+
 ```sql
 -- counts + percentages
 SELECT * FROM table_diff_summary('FROM users_v1', 'FROM users_v2', pk := 'id');
@@ -129,12 +133,14 @@ See [docs/functions.md](docs/functions.md) for the full reference.
 | `context` | LIST | Also expand these **non-compared** columns as `<c>_left`/`<c>_right` (no `_diff_status`). Use `['*']` for every non-key column, which surfaces the full row for `left_only`/`right_only` rows. |
 | `prefix` | VARCHAR | Prefix for the meta columns (default `'diff_'`); change it if a key column would collide. |
 
-**Output:** the key column(s) under their original names (so you can
-`JOIN … USING (…)`), then `diff_status` (`identical` / `different` / `left_only` /
-`right_only`), then `diff_data` — a JSON object of only the changed columns,
-`{"col": {"left": …, "right": …}}`, types preserved — and then, per compared
-column, the expanded `<c>_left` / `<c>_right` (native types) / `<c>_diff_status`.
-Comparison is NULL-safe (`IS NOT DISTINCT FROM`, so `NULL` equals `NULL`).
+**Output columns, in order:**
+
+1. The **key column(s)**, under their original names (so you can `JOIN … USING (…)`).
+2. **`diff_status`** — `identical`, `different`, `left_only`, or `right_only`.
+3. **`diff_data`** — JSON of just the changed columns, types preserved.
+4. The **expanded columns** — `<c>_left`, `<c>_right`, `<c>_diff_status` per compared column.
+
+Comparison is NULL-safe: `NULL` equals `NULL`.
 
 See [docs/functions.md](docs/functions.md) for the full reference (all functions,
 `schema_diff`, and recipes like deriving `ignore`/`columns` from a query).
