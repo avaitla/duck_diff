@@ -51,22 +51,15 @@ ORDER BY column_name;
 a	INTEGER	VARCHAR	type_differs
 id	INTEGER	INTEGER	matched
 
-# ----------------------------------------------------------------------------
-# to_arglist: pivot a column-name list into a paste-ready ignore/columns literal
-# ----------------------------------------------------------------------------
-query T
-SELECT to_arglist(['a', 'b', 'c']);
-----
-['a', 'b', 'c']
+# capture mismatched columns into a variable and feed them straight to a diff
+# (no string juggling: list(...) -> variable -> getvariable in columns/ignore)
+statement ok
+SET VARIABLE mismatch = (
+  SELECT list(column_name ORDER BY column_name)
+  FROM schema_diff('sdl', 'sdr') WHERE status <> 'matched'
+);
 
 query T
-SELECT to_arglist([]::VARCHAR[]);
+SELECT getvariable('mismatch');
 ----
-[]
-
-# end to end: the mismatched columns from schema_diff, ready to paste into ignore
-query T
-SELECT to_arglist(list(column_name ORDER BY column_name))
-FROM schema_diff('sdl', 'sdr') WHERE status <> 'matched';
-----
-['a', 'only_l', 'only_r']
+[a, only_l, only_r]

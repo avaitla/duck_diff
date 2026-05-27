@@ -662,17 +662,6 @@ void LoadInternal(ExtensionLoader &loader) {
 	    "columns := columns, ignore := ignore) WHERE diff_status <> 'matched')"};
 	auto macro_info = DefaultFunctionGenerator::CreateInternalMacroInfo(tables_equal_macro);
 	loader.RegisterFunction(*macro_info);
-
-	// to_arglist: turn a list of column names into a paste-ready argument
-	// literal, e.g. ['a', 'b'] -> "['a', 'b']" for columns := / ignore := .
-	DefaultMacro to_arglist_macro = {
-	    "main",
-	    "to_arglist",
-	    {"cols", nullptr},
-	    {{nullptr, nullptr}},
-	    "('[' || array_to_string(list_transform(cols, lambda x: '''' || x || ''''), ', ') || ']')"};
-	auto arglist_info = DefaultFunctionGenerator::CreateInternalMacroInfo(to_arglist_macro);
-	loader.RegisterFunction(*arglist_info);
 }
 
 } // namespace

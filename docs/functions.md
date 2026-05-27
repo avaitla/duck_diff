@@ -183,29 +183,23 @@ FROM schema_diff('orders', 'orders_v2') WHERE status <> 'matched';
 
 ---
 
-## `to_arglist`
+## Building a `columns` / `ignore` list from a query
 
-Scalar helper that turns a list of column names into a paste-ready argument
-literal for `columns :=` / `ignore :=`. Combine it with `schema_diff` (or
-`table_diff`'s `diff_columns`) to pivot a result into something you can copy
-straight back into a call.
-
-### Signature
+`columns` / `ignore` take a list, and a named argument can't contain a subquery,
+but you can compute the list once into a **variable** and pass it with
+`getvariable(...)` — no string juggling:
 
 ```sql
-to_arglist(cols) -> VARCHAR        -- cols: VARCHAR[]
-```
+-- ignore the columns whose name/type don't match between the two relations
+SET VARIABLE mismatch = (
+  SELECT list(column_name) FROM schema_diff('orders', 'orders_v2') WHERE status <> 'matched'
+);
+FROM table_diff('orders', 'orders_v2', pk := 'id', ignore := getvariable('mismatch'));
 
-```sql
-SELECT to_arglist(['a', 'b']);                       -- ['a', 'b']
-
--- structurally-mismatched columns, ready to drop into ignore :=
-SELECT to_arglist(list(column_name ORDER BY column_name))
-FROM schema_diff('orders', 'orders_v2') WHERE status <> 'matched';
--- e.g. ['legacy_flag', 'amount']  ->  table_diff(..., ignore := ['legacy_flag','amount'])
-
--- columns that actually changed in a value diff
-SELECT to_arglist(list(DISTINCT col))
-FROM (SELECT unnest(diff_columns) AS col
-      FROM table_diff('orders','orders_v2', pk := 'id') WHERE diff_status = 'differs');
+-- or pick columns straight from a relation's schema (DESCRIBE)
+SET VARIABLE numeric_cols = (
+  SELECT list(column_name) FROM (DESCRIBE SELECT * FROM orders)
+  WHERE column_name <> 'id' AND column_type IN ('INTEGER','BIGINT','DOUBLE','DECIMAL')
+);
+FROM table_diff('orders', 'orders_v2', pk := 'id', columns := getvariable('numeric_cols'));
 ```

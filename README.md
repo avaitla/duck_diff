@@ -48,7 +48,6 @@ See [docs/functions.md](docs/functions.md) for the full reference.
 | `table_diff_summary(left, right, pk := …)` | one row | counts (and percentages) per status |
 | `tables_equal(left, right, pk := …)` | BOOLEAN | true iff every key matched |
 | `schema_diff(left, right)` | table | per-column name/type comparison: `column_name`, `left_type`, `right_type`, `status` |
-| `to_arglist(cols)` | VARCHAR | pivot a column-name list into a paste-ready `['a','b']` literal for `columns :=` / `ignore :=` |
 
 ## Key features
 
@@ -72,12 +71,14 @@ See [docs/functions.md](docs/functions.md) for the full reference.
   side-by-side of all columns for dashboards.
 - **Collisions**: meta columns default to a `diff_` prefix; override with
   `prefix := 'cmp_'` if a key column would clash.
-- **Schema diff + pivot**: `schema_diff('a','b')` reports per-column name/type
-  matches; `to_arglist(...)` pivots a column-name list into a paste-ready
-  `['x','y']` literal. Chain them to build an `ignore`/`columns` argument:
+- **Schema diff + reuse**: `schema_diff('a','b')` reports per-column name/type
+  matches. Feed the result straight into a diff via a variable (a named argument
+  can't hold a subquery, so capture the list and pass `getvariable`):
   ```sql
-  SELECT to_arglist(list(column_name ORDER BY column_name))
-  FROM schema_diff('a','b') WHERE status <> 'matched';   -- e.g. ['legacy_flag','amount']
+  SET VARIABLE mismatch = (
+    SELECT list(column_name) FROM schema_diff('a','b') WHERE status <> 'matched'
+  );
+  FROM table_diff('a','b', pk := 'id', ignore := getvariable('mismatch'));
   ```
 
 ## Diffing external sources (BigQuery, Postgres, CSV, …)
