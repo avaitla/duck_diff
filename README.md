@@ -198,9 +198,10 @@ FROM table_diff('a', 'b', pk := 'id');
 > **Installing without building:** `INSTALL` needs prebuilt, per-platform
 > binaries — you can't `INSTALL` straight from this source repo. Cutting a
 > GitHub Release builds, signs, and publishes them to GitHub Pages (see
-> [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)); users then install with:
+> [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)). The binaries are signed with a
+> third-party key, so launch DuckDB with `-unsigned` (it's a startup flag, not a
+> `SET`), then:
 > ```sql
 > SET custom_extension_repository = 'https://avaitla.github.io/duck_diff';
-> SET allow_unsigned_extensions = true;
 > INSTALL duck_diff; LOAD duck_diff;
 > ```

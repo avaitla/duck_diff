@@ -61,11 +61,15 @@ Cut a GitHub Release (e.g. tag `v0.1.0`). The workflow:
 
 ## Installing (as a user)
 
-DuckDB version and platform must match a published build.
+DuckDB version and platform must match a published build. `allow_unsigned_extensions`
+is a **startup flag**, not a runtime `SET` — launch DuckDB with `-unsigned`
+(CLI) or `config={'allow_unsigned_extensions': True}` (client libraries):
 
+```sh
+duckdb -unsigned
+```
 ```sql
 SET custom_extension_repository = 'https://<owner>.github.io/duck_diff';
-SET allow_unsigned_extensions = true;   -- required: signed with a third-party key
 INSTALL duck_diff;
 LOAD duck_diff;
 
