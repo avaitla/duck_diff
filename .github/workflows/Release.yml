@@ -152,6 +152,13 @@ jobs:
           TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
+          # attach the signed per-platform binaries (flat names) + the checksums
+          for f in build_tree/${DUCKDB_VERSION}/*/${EXTENSION_NAME}.duckdb_extension.gz; do
+            arch=$(basename "$(dirname "$f")")
+            asset="${EXTENSION_NAME}-${DUCKDB_VERSION}-${arch}.duckdb_extension.gz"
+            cp "$f" "$asset"
+            gh release upload "$TAG" "$asset" --clobber
+          done
           gh release upload "$TAG" build_tree/SHA256SUMS --clobber
           BASE="https://${GITHUB_REPOSITORY_OWNER}.github.io/${EXTENSION_NAME}"
           {
@@ -177,6 +184,7 @@ jobs:
             echo "### Provenance & integrity"
             echo
             echo "Built for **DuckDB ${DUCKDB_VERSION}** from commit \`${GITHUB_SHA}\`."
+            echo "The signed per-platform binaries are attached below (and served from the Pages repo above)."
             echo "Verify a download against the public key (\`duck_diff-signing-key.pub\`) — see [docs/DISTRIBUTION.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/DISTRIBUTION.md). SHA256 of each published binary:"
             echo
             echo '```'
