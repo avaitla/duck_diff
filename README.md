@@ -102,6 +102,8 @@ and signature verification: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
 - **Safe AI-assisted changes** — give a coding agent like Claude a ground-truth
   check that a refactor or data-modeling change produced identical results, so
   it can iterate on transformations safely instead of guessing.
+- **Simplifying Tests** - you can write sqllogic tests that simulate the results
+  of a table and quickly verify the data diff from expected to actual are the same
 
 DuckDB is a great fit since it has connectors to many databases and can run 
 locally and within customers VPC/private environment.
