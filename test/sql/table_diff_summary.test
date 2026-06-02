@@ -1,5 +1,5 @@
 # name: test/sql/table_diff_summary.test
-# description: table_diff_summary counts and tables_equal
+# description: table_diff_summary counts and equality check
 # group: [sql]
 
 require duck_diff
@@ -39,10 +39,12 @@ FROM table_diff_summary('FROM l', 'FROM r', pk := 'id');
 5	40.0	20.0	20.0	20.0
 
 # ----------------------------------------------------------------------------
-# tables_equal: false when anything different/added/removed
+# equality check (simulated from the summary): false when anything
+# different/added/removed
 # ----------------------------------------------------------------------------
 query T
-SELECT tables_equal('FROM l', 'FROM r', pk := 'id');
+SELECT n_different + n_left_only + n_right_only = 0
+FROM table_diff_summary('FROM l', 'FROM r', pk := 'id');
 ----
 false
 
@@ -54,6 +56,7 @@ statement ok
 INSERT INTO r2 VALUES (1, 1), (2, 2), (3, 3), (5, 5);
 
 query T
-SELECT tables_equal('FROM l', 'FROM r2', pk := 'id');
+SELECT n_different + n_left_only + n_right_only = 0
+FROM table_diff_summary('FROM l', 'FROM r2', pk := 'id');
 ----
 true

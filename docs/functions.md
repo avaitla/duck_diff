@@ -1,7 +1,7 @@
 # duck_diff function reference
 
-`table_diff` and `table_diff_summary` are table functions; `tables_equal` is a
-scalar. The two relations are passed as **query strings**, written the way you
+`table_diff`, `table_diff_summary`, and `schema_diff` are table functions. The
+two relations are passed as **query strings**, written the way you
 would in SQL — a `FROM …` clause or a full `SELECT … FROM …`. This mirrors the
 built-in `query()` function: `'FROM orders'`, `'FROM read_csv(''x.csv'')'`,
 `'SELECT id, amount FROM orders WHERE region = ''EU'''` all work; a bare name
@@ -139,27 +139,6 @@ SELECT * FROM table_diff_summary('FROM snap_a', 'FROM snap_b', pk := 'id');
 
 ---
 
-## `tables_equal`
-
-Scalar convenience: `true` when every key identical, `false` otherwise.
-
-### Signature
-
-```sql
-tables_equal(left, right, pk := 'id',
-             require_matching_columns := true, upcast_types := false,
-             columns := [...], ignore := [...])
-        -> BOOLEAN
-```
-
-```sql
-SELECT tables_equal('FROM expected', 'FROM actual', pk := 'id');  -- true / false
-```
-
-Equivalent to `SELECT count(*) = 0 FROM table_diff(...) WHERE diff_status <> 'identical'`.
-
----
-
 ## `schema_diff`
 
 Compares the **column names and types** of two relations — no rows are read.
@@ -293,5 +272,4 @@ FROM table_diff('FROM snap_a', 'FROM snap_b', pk := 'id',
                 null_equals_empty := true);
 ```
 
-> These knobs live on `table_diff` and `table_diff_summary`. `tables_equal` does
-> an exact value comparison and does not take them.
+> These knobs live on `table_diff` and `table_diff_summary`.

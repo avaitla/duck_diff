@@ -62,8 +62,9 @@ SELECT * FROM table_diff_summary('FROM users_v1', 'FROM users_v2', pk := 'id');
 └───────────┴───────────┴─────────────┴──────────────┴─────────┴─────────────┴─────────────┴───────────────┴────────────────┘
 ```
 ```sql
--- or a single yes/no
-SELECT tables_equal('FROM users_v1', 'FROM users_v2', pk := 'id');   -- false
+-- or a single yes/no, simulated from the summary
+SELECT n_different + n_left_only + n_right_only = 0
+FROM table_diff_summary('FROM users_v1', 'FROM users_v2', pk := 'id');   -- false
 ```
 
 ## Install
@@ -114,7 +115,6 @@ See [docs/functions.md](docs/functions.md) for the full reference.
 |----------|---------|---------|
 | `table_diff(left, right, pk := …)` | table | one row per key: key column(s), `diff_status`, `diff_data` |
 | `table_diff_summary(left, right, pk := …)` | one row | counts (and percentages) per status |
-| `tables_equal(left, right, pk := …)` | BOOLEAN | true iff every key identical |
 | `schema_diff(left, right)` | table | per-column name/type comparison: `column_name`, `left_type`, `right_type`, `status` |
 
 ## `table_diff` parameters
