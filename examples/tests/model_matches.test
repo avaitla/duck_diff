@@ -1,0 +1,38 @@
+# Demonstration: unit-test your own SQL with duck_diff's table_diff,
+# using nothing but the `duckdb` CLI.
+#
+# The idiom: a transformation is correct when table_diff_summary reports zero
+# differences against a golden table. `LOAD duck_diff;` is replayed before each
+# record by the runner, so the extension persists across the file.
+
+statement ok
+LOAD duck_diff;
+
+# --- your source data -----------------------------------------------------
+statement ok
+CREATE TABLE orders (id INTEGER, customer VARCHAR, amount INTEGER);
+
+statement ok
+INSERT INTO orders VALUES (1, 'alice', 10), (2, 'alice', 5), (3, 'bob', 20);
+
+# --- the golden (expected) output of your transformation ------------------
+statement ok
+CREATE TABLE expected_revenue (customer VARCHAR, revenue INTEGER);
+
+statement ok
+INSERT INTO expected_revenue VALUES ('alice', 15), ('bob', 20);
+
+# --- the transformation under test ----------------------------------------
+statement ok
+CREATE TABLE actual_revenue AS
+SELECT customer, SUM(amount)::INTEGER AS revenue
+FROM orders
+GROUP BY customer;
+
+# --- assert: every key identical (no differences) -------------------------
+# columns: n_different | n_left_only | n_right_only | n_identical
+query IIII
+SELECT n_different, n_left_only, n_right_only, n_identical
+FROM table_diff_summary('FROM expected_revenue', 'FROM actual_revenue', pk := 'customer');
+----
+0	0	0	2

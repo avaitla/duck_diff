@@ -1,0 +1,37 @@
+# Demonstration: when a model drifts, table_diff names the exact key and
+# column that changed. This exercises all four diff_status values.
+
+statement ok
+LOAD duck_diff;
+
+statement ok
+CREATE TABLE expected (id INTEGER, name VARCHAR, score INTEGER);
+
+statement ok
+INSERT INTO expected VALUES (1, 'a', 10), (2, 'b', 20), (3, 'c', 30);
+
+# actual drifts: id 2 changed (b->B), id 3 dropped, id 4 unexpected
+statement ok
+CREATE TABLE actual (id INTEGER, name VARCHAR, score INTEGER);
+
+statement ok
+INSERT INTO actual VALUES (1, 'a', 10), (2, 'B', 20), (4, 'd', 40);
+
+# per-key status
+query IT
+SELECT id, diff_status
+FROM table_diff('FROM expected', 'FROM actual', pk := 'id')
+ORDER BY id;
+----
+1	identical
+2	different
+3	left_only
+4	right_only
+
+# diff_data is a JSON object of only the changed columns
+query T
+SELECT diff_data
+FROM table_diff('FROM expected', 'FROM actual', pk := 'id')
+WHERE id = 2;
+----
+{"name":{"left":"b","right":"B"}}

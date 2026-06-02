@@ -105,8 +105,8 @@ and signature verification: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
   it can iterate on transformations safely instead of guessing.
 - **Regression tests in CI** — assert in a test suite that a model's output
   still matches its golden snapshot, failing the build when it drifts. See
-  [examples/](examples/) for a copy-paste `make test` setup that runs
-  sqllogictest `.test` files with nothing but the `duckdb` CLI.
+  [examples/](examples/) for a copy-paste demonstration of writing your own
+  `table_diff` tests, runnable with nothing but the `duckdb` CLI.
 - **Simplifying Tests** - you can write sqllogic tests that simulate the results
   of a table and quickly verify the data diff from expected to actual are the same
 
