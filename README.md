@@ -106,6 +106,8 @@ and signature verification: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
 - **Regression tests in CI** — assert in a test suite that a model's output
   still matches its golden snapshot, failing the build when it drifts. See
   [examples/](examples/) for runnable `.test` files and a GitHub Actions snippet.
+- **Simplifying Tests** - you can write sqllogic tests that simulate the results
+  of a table and quickly verify the data diff from expected to actual are the same
 
 DuckDB is a great fit since it has connectors to many databases and can run 
 locally and within customers VPC/private environment.
