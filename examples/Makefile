@@ -1,22 +1,27 @@
-# Run the example sqllogictest (.test) files against a built duck_diff.
+# Unit-test your own DuckDB SQL in the sqllogictest format — with nothing
+# installed but the `duckdb` CLI. Copy this directory into your project.
 #
-# sqllogictest is DuckDB's standard test format; the `unittest` binary that
-# runs it is produced by the duck_diff build. Build once from the repo root
-# (GEN=ninja make), then from this directory:
+#   make setup    # check that duckdb is available
+#   make test     # run every tests/*.test file
 #
-#   make test
-#
-# `--test-dir .` points the runner at this directory, so it discovers the
-# .test files under ./test/. Override the binary if it lives elsewhere:
-#
-#   make test UNITTEST=/path/to/build/release/test/unittest
+# No source build, no `unittest` binary, no extension required: tests/*.test
+# are run by ./run_sqllogictest.sh, a small runner that drives the duckdb CLI.
+# Use a different duckdb with:  make test DUCKDB=/path/to/duckdb
 
-UNITTEST ?= ../build/release/test/unittest
+# Absolute path to this Makefile's directory, so the invoking cwd doesn't
+# matter (e.g. `make -C examples test` from a parent project).
+HERE   := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+DUCKDB ?= duckdb
 
-.PHONY: test
-test:
-	@test -x "$(UNITTEST)" || { \
-	  echo "unittest binary not found at '$(UNITTEST)'"; \
-	  echo "build it first:  (cd .. && GEN=ninja make)"; \
+.PHONY: setup test
+setup:
+	@command -v $(DUCKDB) >/dev/null 2>&1 || { \
+	  echo "duckdb not found on PATH."; \
+	  echo "install it from https://duckdb.org/docs/installation/"; \
+	  echo "(or run with an explicit path: make test DUCKDB=/path/to/duckdb)"; \
 	  exit 1; }
-	"$(UNITTEST)" --test-dir . "test/*"
+	@echo "duckdb: $$($(DUCKDB) --version)"
+	@echo "ready — run 'make test'"
+
+test:
+	@cd "$(HERE)" && DUCKDB="$(DUCKDB)" bash run_sqllogictest.sh tests/*.test

@@ -1,0 +1,26 @@
+# Example: unit-testing your own SQL in the sqllogictest format.
+# Nothing required but the `duckdb` CLI — no extension, no source build.
+
+# --- fixtures: stand in for your source tables ----------------------------
+statement ok
+CREATE TABLE orders (id INTEGER, customer VARCHAR, amount INTEGER);
+
+statement ok
+INSERT INTO orders VALUES
+    (1, 'alice', 10),
+    (2, 'alice',  5),
+    (3, 'bob',   20),
+    (4, 'carol',  0);
+
+# --- the query under test: revenue per paying customer --------------------
+# `query` runs the SQL and compares its output (tab-separated, one row per
+# line) to the block after `----`. A mismatch fails the run.
+query TI
+SELECT customer, SUM(amount) AS revenue
+FROM orders
+WHERE amount > 0
+GROUP BY customer
+ORDER BY customer;
+----
+alice	15
+bob	20

@@ -1,33 +1,73 @@
-# Examples — using duck_diff in CI
+# Unit-testing DuckDB SQL with sqllogictest — `duckdb` CLI only
 
-These are runnable [sqllogictest][slt] files showing how to assert, in a test
-suite, that two relations match (or drift in a bounded way). sqllogictest is
-DuckDB's own test format, run by the `unittest` binary the duck_diff build
-produces — no extra harness.
-
-| File | Shows |
-|------|-------|
-| [`test/sql/model_matches.test`](test/sql/model_matches.test) | The pass/fail idiom: a transformation's output is correct iff `table_diff_summary` reports `n_different = n_left_only = n_right_only = 0`. |
-| [`test/sql/model_diff_detail.test`](test/sql/model_diff_detail.test) | When something drifts, `table_diff` names the exact key and column — exercises all four `diff_status` values (`identical` / `different` / `left_only` / `right_only`). |
-| [`test/sql/summary_counts.test`](test/sql/summary_counts.test) | Tolerance thresholds: assert on `pct_different` (e.g. fail only when more than X% of keys differ) instead of demanding exact equality. |
-
-## Running them
-
-Build the extension once from the repo root (see
-[Building](../README.md#building)), then from this directory:
+A copy-paste-into-your-project template for regression-testing your own DuckDB
+SQL in the [sqllogictest][slt] format, needing **nothing but the `duckdb`
+binary** — no source build, no `unittest` binary, no extension.
 
 ```sh
-make test
+make setup    # checks that duckdb is on PATH
+make test     # runs every tests/*.test
 ```
 
-The [`Makefile`](Makefile) just points the standard `unittest` runner at this
-directory (`unittest --test-dir . "test/*"`), which discovers the `.test` files
-under [`test/`](test). It exits non-zero on the first failing assertion, so a
-drifted model fails the build — that's the whole CI story.
+## How it works
 
-To diff a live source (BigQuery, Postgres, a CSV, …) instead of the in-test
-fixtures, swap the `'FROM expected'` / `'FROM actual'` strings for real
-queries — see
-[Diffing external sources](../README.md#diffing-external-sources-bigquery-postgres-csv-).
+sqllogictest is DuckDB's standard test format, but its usual runner — the
+`unittest` binary — is only produced by building DuckDB from source and is not
+distributed anywhere. So this template ships [`run_sqllogictest.sh`](run_sqllogictest.sh):
+a small runner that interprets the common subset of the format by driving the
+`duckdb` CLI. `make test` runs it and exits non-zero on the first mismatch, so a
+drifted query fails your build.
+
+Supported records (a blank line ends each one):
+
+| Record | Meaning |
+|--------|---------|
+| `statement ok` + SQL | run it; fail if it errors |
+| `statement error` + SQL | run it; fail if it *succeeds* |
+| `query <types>` + SQL + `----` + rows | run it; compare output to the rows (tab-separated, one row per line, `NULL` for nulls) |
+| `# …`, `require …`, `mode …` | ignored (kept so files also run under the real `unittest`) |
+
+Tables persist across records within a file; each file gets a fresh database.
+This covers most project test suites but is **not** the full sqllogictest spec
+(no hashing, labels, sort modes, or per-engine `skipif`/`onlyif` logic).
+
+## Writing a test
+
+Drop a `.test` file in [`tests/`](tests). See
+[`tests/revenue_by_customer.test`](tests/revenue_by_customer.test):
+
+```
+statement ok
+CREATE TABLE orders (id INTEGER, customer VARCHAR, amount INTEGER);
+
+statement ok
+INSERT INTO orders VALUES (1,'alice',10), (2,'alice',5), (3,'bob',20);
+
+query TI
+SELECT customer, SUM(amount) FROM orders GROUP BY customer ORDER BY customer;
+----
+alice	15
+bob	20
+```
+
+Columns in the expected block are separated by a single **tab**.
+
+## Using duck_diff inside a test (optional)
+
+The runner passes `-unsigned`, so if you've installed the [duck_diff](../)
+extension you can `LOAD duck_diff;` and assert on a whole-table comparison
+instead of hand-writing expected rows:
+
+```
+statement ok
+LOAD duck_diff;
+
+# expected vs actual must be identical on the primary key
+query I
+SELECT n_different + n_left_only + n_right_only
+FROM table_diff_summary('FROM expected', 'FROM actual', pk := 'id');
+----
+0
+```
 
 [slt]: https://duckdb.org/dev/sqllogictest/intro
