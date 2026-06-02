@@ -543,15 +543,26 @@ string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string
 		}
 	}
 
-	string dup_cond = "EXISTS (SELECT 1 FROM __l GROUP BY " + key_list + " HAVING count(*) > 1) OR " +
-	                  "EXISTS (SELECT 1 FROM __r GROUP BY " + key_list + " HAVING count(*) > 1)";
+	// Detect duplicate keys per side so the error can name which input is at
+	// fault (and echo the relation text). The relation strings are embedded in
+	// the message via QuoteLiteral so any quotes/specials are escaped.
+	string dup_left = "EXISTS (SELECT 1 FROM __l GROUP BY " + key_list + " HAVING count(*) > 1)";
+	string dup_right = "EXISTS (SELECT 1 FROM __r GROUP BY " + key_list + " HAVING count(*) > 1)";
+	string msg_both = QuoteLiteral("table_diff: duplicate primary key values found in both the left (" + plan.left +
+	                               ") and right (" + plan.right + ") inputs");
+	string msg_left = QuoteLiteral("table_diff: duplicate primary key values found in the left input (" + plan.left +
+	                               ")");
+	string msg_right =
+	    QuoteLiteral("table_diff: duplicate primary key values found in the right input (" + plan.right + ")");
+	string dup_check = "CASE WHEN " + dup_left + " AND " + dup_right + " THEN error(" + msg_both + ") WHEN " +
+	                   dup_left + " THEN error(" + msg_left + ") WHEN " + dup_right + " THEN error(" + msg_right +
+	                   ") END";
 
 	string sql = "WITH __l AS (SELECT __t.*, TRUE AS __p FROM (" + plan.left + ") __t), " +
 	             "__r AS (SELECT __t.*, TRUE AS __p FROM (" + plan.right + ") __t) " + "SELECT " + key_select +
 	             "CASE WHEN r.__p IS NULL THEN 'left_only' WHEN l.__p IS NULL THEN 'right_only' WHEN " + all_eq +
 	             " THEN 'identical' ELSE 'different' END AS " + QuoteIdent(status_col) + middle_select +
-	             " FROM __l AS l FULL OUTER JOIN __r AS r ON " + join_cond + " WHERE (CASE WHEN " + dup_cond +
-	             " THEN error('table_diff: duplicate primary key values found in input') END) IS NULL";
+	             " FROM __l AS l FULL OUTER JOIN __r AS r ON " + join_cond + " WHERE (" + dup_check + ") IS NULL";
 	return sql;
 }
 
