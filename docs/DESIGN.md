@@ -9,7 +9,6 @@ reports, per key, whether it is identical, different, or exists only on one side
 |----------|---------|---------|
 | `table_diff(left, right, pk := …)` | table | one row per key: key column(s), `diff_status`, `diff_data` |
 | `table_diff_summary(left, right, pk := …)` | 1-row table | counts per status |
-| `tables_equal(left, right, pk := …)` | BOOLEAN | fast equality check for CI/tests |
 
 ## Inputs are strings
 
@@ -93,8 +92,7 @@ WHERE (CASE WHEN <duplicate key exists> THEN error('…') END) IS NULL;
 - Duplicate keys are detected with a `GROUP BY … HAVING count(*) > 1` guard that
   raises via the `error()` scalar.
 
-Requires the bundled `json` extension. `tables_equal` is a SQL macro wrapping
-`table_diff`.
+Requires the bundled `json` extension.
 
 ## Out of scope (future)
 - No-key / set-difference mode (we require a pk).

@@ -11,8 +11,6 @@
 #include "duckdb/parser/tableref/subqueryref.hpp"
 #include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/bound_statement.hpp"
-#include "duckdb/catalog/default/default_functions.hpp"
-#include "duckdb/parser/parsed_data/create_macro_info.hpp"
 
 namespace duckdb {
 
@@ -722,23 +720,6 @@ void LoadInternal(ExtensionLoader &loader) {
 	TableFunction schema_diff("schema_diff", {LogicalType::VARCHAR, LogicalType::VARCHAR}, nullptr, nullptr);
 	schema_diff.bind_replace = SchemaDiffBindReplace;
 	loader.RegisterFunction(schema_diff);
-
-	// tables_equal: scalar convenience wrapper over table_diff
-	DefaultMacro tables_equal_macro = {
-	    "main",
-	    "tables_equal",
-	    {"lhs", "rhs", nullptr},
-	    {{"pk", "NULL"},
-	     {"require_matching_columns", "true"},
-	     {"upcast_types", "false"},
-	     {"columns", "NULL"},
-	     {"ignore", "NULL"},
-	     {nullptr, nullptr}},
-	    "(SELECT count(*) = 0 FROM table_diff(lhs, rhs, pk := pk, "
-	    "require_matching_columns := require_matching_columns, upcast_types := upcast_types, "
-	    "columns := columns, ignore := ignore) WHERE diff_status <> 'identical')"};
-	auto macro_info = DefaultFunctionGenerator::CreateInternalMacroInfo(tables_equal_macro);
-	loader.RegisterFunction(*macro_info);
 }
 
 } // namespace
