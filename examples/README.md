@@ -13,30 +13,18 @@ directly — no extra harness.
 
 ## Running them
 
-The `.test` format is understood by DuckDB's `unittest` binary, which the
-duck_diff build produces. From a built checkout (see
-[Building](../README.md#building)):
+These run like any duck_diff test (see [Building](../README.md#building)):
 
 ```sh
-build/release/test/unittest "examples/sql/*"
+make test                                    # build + run the suite
+build/release/test/unittest "examples/sql/*" # or just these examples
+duckdb -unsigned                             # or poke at it in a shell
 ```
 
-## In CI
-
-Drop your own `.test` files alongside these, then run `unittest` against them in
-a workflow step. A minimal GitHub Actions job:
-
-```yaml
-- name: build duck_diff
-  run: GEN=ninja make
-
-- name: assert models match
-  run: build/release/test/unittest "examples/sql/*"
-```
-
-The step exits non-zero on the first failing assertion, so a drifted model
-fails the build. To diff a live source (BigQuery, Postgres, a CSV, …) instead of
-the in-test fixtures, swap the `'FROM expected'` / `'FROM actual'` strings for
-real queries — see [Diffing external sources](../README.md#diffing-external-sources-bigquery-postgres-csv-).
+`make test` exits non-zero on the first failing assertion, so a drifted model
+fails the build — that's the whole CI story. To diff a live source (BigQuery,
+Postgres, a CSV, …) instead of the in-test fixtures, swap the `'FROM expected'` /
+`'FROM actual'` strings for real queries — see
+[Diffing external sources](../README.md#diffing-external-sources-bigquery-postgres-csv-).
 
 [slt]: https://duckdb.org/dev/sqllogictest/intro
