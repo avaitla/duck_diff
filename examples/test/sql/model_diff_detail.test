@@ -1,4 +1,4 @@
-# name: examples/sql/model_diff_detail.test
+# name: examples/test/sql/model_diff_detail.test
 # description: table_diff surfaces the exact per-key discrepancy when models drift
 # group: [duck_diff]
 #
@@ -9,6 +9,8 @@
 #     right_only | key only in the actual model   (an unexpected row)
 
 require duck_diff
+
+require json
 
 
 # === expected (golden) model ===============================================

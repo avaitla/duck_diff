@@ -1,4 +1,4 @@
-# name: examples/sql/summary_counts.test
+# name: examples/test/sql/summary_counts.test
 # description: table_diff_summary reports counts and percentages per diff_status
 # group: [duck_diff]
 #
@@ -6,6 +6,8 @@
 # (e.g. fail CI only when pct_different exceeds some budget).
 
 require duck_diff
+
+require json
 
 
 # === models ================================================================
