@@ -2,7 +2,7 @@
 # description: per-column expansion -- compared columns always emit <c>_left/<c>_right (native types) + <c>_diff_status, context columns emit <c>_left/<c>_right
 # group: [sql]
 
-require duck_diff
+require table_diff
 
 require json
 

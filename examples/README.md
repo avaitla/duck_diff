@@ -1,7 +1,7 @@
 # Testing your own SQL with `table_diff` — `duckdb` CLI only
 
 A copy-paste-into-your-project demonstration of how to write your own
-regression tests with duck_diff's `table_diff`, in the [sqllogictest][slt]
+regression tests with table_diff's `table_diff`, in the [sqllogictest][slt]
 format, needing **nothing but the `duckdb` CLI** — no source build, no
 `unittest` binary.
 
@@ -10,7 +10,7 @@ make setup    # checks that duckdb is on PATH
 make test     # runs every tests/*.test
 ```
 
-The examples assume the `duck_diff` extension is installed (see the
+The examples assume the `table_diff` extension is installed (see the
 [top-level README](../README.md#install)); each test `LOAD`s it.
 
 ## The examples
@@ -25,7 +25,7 @@ A test defines a golden table, runs your transformation, and asserts that
 
 ```
 statement ok
-LOAD duck_diff;
+LOAD table_diff;
 
 statement ok
 CREATE TABLE actual_revenue AS

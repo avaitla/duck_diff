@@ -4,7 +4,7 @@
 
 namespace duckdb {
 
-class DuckDiffExtension : public Extension {
+class TableDiffExtension : public Extension {
 public:
 	void Load(ExtensionLoader &db) override;
 	std::string Name() override;

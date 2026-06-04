@@ -2,7 +2,7 @@
 # description: v1 error cases (required pk, missing key, duplicate keys)
 # group: [sql]
 
-require duck_diff
+require table_diff
 
 require json
 

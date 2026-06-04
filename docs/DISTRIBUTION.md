@@ -1,6 +1,6 @@
 # Distribution — signed binaries on GitHub Releases
 
-`.github/workflows/Release.yml` builds `duck_diff` for every native platform on
+`.github/workflows/Release.yml` builds `table_diff` for every native platform on
 each GitHub Release, signs each binary, and attaches the signed
 `.duckdb_extension` files (plus `SHA256SUMS`) to the release as assets.
 
@@ -19,7 +19,7 @@ simpler, fully self-contained route.
 
 ```sh
 openssl genrsa -out private.pem 2048
-openssl rsa -in private.pem -pubout -out duck_diff-signing-key.pub   # public half (committed)
+openssl rsa -in private.pem -pubout -out table_diff-signing-key.pub   # public half (committed)
 ```
 Keep `private.pem` out of the repo.
 
@@ -47,13 +47,13 @@ stamps the extension version from the tag (`git describe`). So a release is:
 3. **Cut the release** (tag + publish in one step):
    ```sh
    git checkout main && git pull
-   gh release create v0.2.0 --target main --title "duck_diff v0.2.0" --notes "see workflow"
+   gh release create v0.2.0 --target main --title "table_diff v0.2.0" --notes "see workflow"
    ```
    (Or GitHub UI → **Releases → Draft a new release** → create tag `v0.2.0` on
    `main` → **Publish**.)
 4. **Done** — publishing fires `Release.yml`, which builds every platform, signs
    each binary, attaches them as
-   `duck_diff-<duckdb_version>-<platform>.duckdb_extension` + `SHA256SUMS`, and
+   `table_diff-<duckdb_version>-<platform>.duckdb_extension` + `SHA256SUMS`, and
    rewrites the release notes with install instructions, the source commit, and
    the checksums. Watch it with `gh run watch` if you like.
 
@@ -69,17 +69,17 @@ stamps the extension version from the tag (`git describe`). So a release is:
 ## Installing (as a user)
 
 Download the `*.duckdb_extension` matching your DuckDB version and platform from
-the release assets and **save it as `duck_diff.duckdb_extension`** — DuckDB
+the release assets and **save it as `table_diff.duckdb_extension`** — DuckDB
 derives the extension name and entrypoint from the filename, so the name matters.
 It's signed with a third-party key, so launch with `-unsigned`:
 
 ```sh
-curl -L -o duck_diff.duckdb_extension \
-  https://github.com/<owner>/duck_diff/releases/download/v0.1.0/duck_diff-v1.5.2-osx_arm64.duckdb_extension
+curl -L -o table_diff.duckdb_extension \
+  https://github.com/<owner>/duckdb-table-diff/releases/download/v0.1.0/table_diff-v1.5.2-osx_arm64.duckdb_extension
 duckdb -unsigned
 ```
 ```sql
-LOAD 'duck_diff.duckdb_extension';
+LOAD 'table_diff.duckdb_extension';
 FROM table_diff('FROM a', 'FROM b', pk := 'id');
 ```
 From a client library, enable unsigned extensions in the connection config (e.g.
@@ -89,7 +89,7 @@ Python: `duckdb.connect(config={'allow_unsigned_extensions': True})`).
 
 Each release ships `SHA256SUMS` (also inlined in the notes) and is signed with
 the key whose public half is committed at
-[`duck_diff-signing-key.pub`](../duck_diff-signing-key.pub):
+[`table_diff-signing-key.pub`](../table_diff-signing-key.pub):
 
 ```
 -----BEGIN PUBLIC KEY-----
@@ -113,7 +113,7 @@ payload is the SHA256 composite of everything before it (1 MiB chunks each
 hashed, then the concatenation hashed — DuckDB's `compute-extension-hash.sh`):
 
 ```sh
-F=duck_diff-v1.5.2-osx_arm64.duckdb_extension
+F=table_diff-v1.5.2-osx_arm64.duckdb_extension
 size=$(wc -c < "$F")
 head -c $((size - 256)) "$F" > body
 tail -c 256             "$F" > sig
@@ -121,7 +121,7 @@ tail -c 256             "$F" > sig
 split -b 1M body seg_
 for f in seg_*; do openssl dgst -binary -sha256 "$f" >> chunks; rm "$f"; done
 openssl dgst -binary -sha256 chunks > hash
-openssl pkeyutl -verify -pubin -inkey duck_diff-signing-key.pub \
+openssl pkeyutl -verify -pubin -inkey table_diff-signing-key.pub \
   -sigfile sig -in hash -pkeyopt digest:sha256
 # -> Signature Verified Successfully
 ```

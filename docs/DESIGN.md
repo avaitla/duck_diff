@@ -1,4 +1,4 @@
-# duck_diff — Design
+# table_diff — Design
 
 A focused DuckDB extension that diffs two relations on a primary key and
 reports, per key, whether it is identical, different, or exists only on one side.

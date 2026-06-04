@@ -11,7 +11,7 @@ SELECT * FROM table_diff('FROM l', 'FROM r', pk := 'id');
 ----
 Catalog Error
 
-require duck_diff
+require table_diff
 
 require json
 

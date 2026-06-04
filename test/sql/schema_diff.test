@@ -2,7 +2,7 @@
 # description: schema_diff -- compare column names and types of two relations
 # group: [sql]
 
-require duck_diff
+require table_diff
 
 require json
 

@@ -2,7 +2,7 @@
 # description: schema reconciliation (require_matching_columns / upcast_types, columns, ignore, type mismatch, prefix/collision)
 # group: [sql]
 
-require duck_diff
+require table_diff
 
 require json
 

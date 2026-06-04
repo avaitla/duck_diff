@@ -1,4 +1,4 @@
-# duck_diff
+# table_diff
 
 A DuckDB extension for diffing two relations (tables, SQL queries, etc.) off a primary key. Given a
 "left" and a "right" relation, it reports — per key — whether the row is
@@ -10,7 +10,7 @@ subset of columns to diff or ignore.
 
 ## Quick start
 
-Get a DuckDB shell with `duck_diff` loaded (see [Install](#install) or
+Get a DuckDB shell with `table_diff` loaded (see [Install](#install) or
 [Building](#building)), then create two sample snapshots and diff them:
 
 ```sql
@@ -69,23 +69,23 @@ FROM table_diff_summary('FROM users_v1', 'FROM users_v2', pk := 'id');   -- fals
 
 ## Install
 
-Each [GitHub Release](https://github.com/avaitla/duck_diff/releases) attaches a
+Each [GitHub Release](https://github.com/avaitla/duckdb-table-diff/releases) attaches a
 signed binary per platform. Download the one matching your DuckDB version and
-platform, **saved as `duck_diff.duckdb_extension`** (DuckDB derives the
+platform, **saved as `table_diff.duckdb_extension`** (DuckDB derives the
 extension name from the filename), then load it under `-unsigned` (the binaries
 are signed with a third-party key, so unsigned extensions must be enabled — a
 launch flag, not a `SET`):
 
 ```sh
-curl -L -o duck_diff.duckdb_extension \
-  https://github.com/avaitla/duck_diff/releases/download/v0.1.0/duck_diff-v1.5.2-osx_arm64.duckdb_extension
+curl -L -o table_diff.duckdb_extension \
+  https://github.com/avaitla/duckdb-table-diff/releases/download/v0.1.0/table_diff-v1.5.2-osx_arm64.duckdb_extension
 duckdb -unsigned
 ```
 
 Load it with the full filepath:
 
 ```sql
-LOAD '/path/to/duck_diff.duckdb_extension';
+LOAD '/path/to/table_diff.duckdb_extension';
 SELECT * FROM table_diff('FROM a', 'FROM b', pk := 'id');
 ```
 
@@ -200,13 +200,13 @@ single query you can also force one shared scan with a `WITH x AS MATERIALIZED
 ## Building
 
 The repo vendors DuckDB and the build tooling as submodules, so a clone +
-`make` produces a DuckDB shell with `duck_diff` preloaded:
+`make` produces a DuckDB shell with `table_diff` preloaded:
 
 ```sh
-git clone --recurse-submodules https://github.com/avaitla/duck_diff
-cd duck_diff
+git clone --recurse-submodules https://github.com/avaitla/duckdb-table-diff
+cd table_diff
 GEN=ninja make            # first build compiles DuckDB; needs cmake + ninja
-./build/release/duckdb    # this shell already has duck_diff loaded
+./build/release/duckdb    # this shell already has table_diff loaded
 
 build/release/test/unittest "test/sql/*"   # run the SQL test suite
 ```
@@ -218,26 +218,26 @@ bundled `json` extension is required (built in automatically for tests).
 ### Using it in another DuckDB
 
 The build also emits a loadable binary at
-`build/release/extension/duck_diff/duck_diff.duckdb_extension`. It's locally
+`build/release/extension/table_diff/table_diff.duckdb_extension`. It's locally
 built (unsigned), so load it with unsigned extensions enabled:
 
 ```sh
 duckdb -unsigned
 ```
 ```sql
-LOAD 'build/release/extension/duck_diff/duck_diff.duckdb_extension';
+LOAD 'build/release/extension/table_diff/table_diff.duckdb_extension';
 SELECT * FROM table_diff('FROM a', 'FROM b', pk := 'id');
 ```
 
-> **Installing without building:** each [GitHub Release](https://github.com/avaitla/duck_diff/releases)
+> **Installing without building:** each [GitHub Release](https://github.com/avaitla/duckdb-table-diff/releases)
 > attaches signed, per-platform `.duckdb_extension` binaries (see
 > [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)). Download the one for your
-> platform, **saved as `duck_diff.duckdb_extension`** (DuckDB derives the
+> platform, **saved as `table_diff.duckdb_extension`** (DuckDB derives the
 > extension name from the filename), then `LOAD` it under `-unsigned`:
 > ```sh
-> curl -L -o duck_diff.duckdb_extension \
->   https://github.com/avaitla/duck_diff/releases/download/v0.1.0/duck_diff-v1.5.2-osx_arm64.duckdb_extension
-> duckdb -unsigned -c "LOAD 'duck_diff.duckdb_extension'; SELECT * FROM table_diff('FROM a','FROM b', pk:='id');"
+> curl -L -o table_diff.duckdb_extension \
+>   https://github.com/avaitla/duckdb-table-diff/releases/download/v0.1.0/table_diff-v1.5.2-osx_arm64.duckdb_extension
+> duckdb -unsigned -c "LOAD 'table_diff.duckdb_extension'; SELECT * FROM table_diff('FROM a','FROM b', pk:='id');"
 > ```
 
 ## TODO

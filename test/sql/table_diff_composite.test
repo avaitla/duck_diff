@@ -2,7 +2,7 @@
 # description: composite primary key (pk as a list) and join-back
 # group: [sql]
 
-require duck_diff
+require table_diff
 
 require json
 

@@ -1,4 +1,4 @@
-# duck_diff function reference
+# table_diff function reference
 
 `table_diff`, `table_diff_summary`, and `schema_diff` are table functions. The
 two relations are passed as **query strings**, written the way you

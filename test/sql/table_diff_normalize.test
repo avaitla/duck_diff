@@ -2,7 +2,7 @@
 # description: value-normalization flags (numeric_tolerance, timestamp_precision, null_equals_empty)
 # group: [sql]
 
-require duck_diff
+require table_diff
 
 require json
 

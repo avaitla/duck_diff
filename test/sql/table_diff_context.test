@@ -2,7 +2,7 @@
 # description: context columns -- 'context' pulls extra (non-compared) columns into the <c>_left/<c>_right expansion
 # group: [sql]
 
-require duck_diff
+require table_diff
 
 require json
 

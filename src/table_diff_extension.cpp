@@ -1,6 +1,6 @@
 #define DUCKDB_EXTENSION_MAIN
 
-#include "duck_diff_extension.hpp"
+#include "table_diff_extension.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -735,17 +735,17 @@ void LoadInternal(ExtensionLoader &loader) {
 
 } // namespace
 
-void DuckDiffExtension::Load(ExtensionLoader &loader) {
+void TableDiffExtension::Load(ExtensionLoader &loader) {
 	LoadInternal(loader);
 }
 
-std::string DuckDiffExtension::Name() {
-	return "duck_diff";
+std::string TableDiffExtension::Name() {
+	return "table_diff";
 }
 
-std::string DuckDiffExtension::Version() const {
-#ifdef EXT_VERSION_DUCK_DIFF
-	return EXT_VERSION_DUCK_DIFF;
+std::string TableDiffExtension::Version() const {
+#ifdef EXT_VERSION_TABLE_DIFF
+	return EXT_VERSION_TABLE_DIFF;
 #else
 	return "";
 #endif
@@ -755,7 +755,7 @@ std::string DuckDiffExtension::Version() const {
 
 extern "C" {
 
-DUCKDB_CPP_EXTENSION_ENTRY(duck_diff, loader) {
+DUCKDB_CPP_EXTENSION_ENTRY(table_diff, loader) {
 	duckdb::LoadInternal(loader);
 }
 }

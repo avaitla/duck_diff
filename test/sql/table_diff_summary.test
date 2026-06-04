@@ -2,7 +2,7 @@
 # description: table_diff_summary counts and equality check
 # group: [sql]
 
-require duck_diff
+require table_diff
 
 require json
 

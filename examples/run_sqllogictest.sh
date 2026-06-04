@@ -26,7 +26,7 @@ DUCKDB="${DUCKDB:-duckdb}"
 TAB="$(printf '\t')"
 
 # `-unsigned` is harmless when no extension is used; it lets your tests
-# `LOAD duck_diff;` (or any installed extension) if you want richer assertions.
+# `LOAD table_diff;` (or any installed extension) if you want richer assertions.
 
 # Run a statement; output (incl. errors) on stdout, exit code preserved.
 slt_stmt() { "$DUCKDB" "$1" -unsigned -batch -init /dev/null -c "$2" 2>&1; }

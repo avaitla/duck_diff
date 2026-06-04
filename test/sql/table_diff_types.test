@@ -2,7 +2,7 @@
 # description: table_diff across a range of data types (bool, bigint, decimal, date, timestamp, blob)
 # group: [sql]
 
-require duck_diff
+require table_diff
 
 require json
 
