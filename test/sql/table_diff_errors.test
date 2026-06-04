@@ -50,7 +50,7 @@ INSERT INTO dr VALUES (1, 1);
 statement error
 SELECT * FROM table_diff('FROM dl', 'FROM dr', pk := 'id');
 ----
-duplicate
+duplicate primary key values found in the left input (FROM dl)
 
 # duplicate on the right side is also an error
 statement ok
@@ -62,7 +62,16 @@ INSERT INTO dr VALUES (1, 9);
 statement error
 SELECT * FROM table_diff('FROM dl', 'FROM dr', pk := 'id');
 ----
-duplicate
+duplicate primary key values found in the right input (FROM dr)
+
+# duplicates on both sides are reported together
+statement ok
+INSERT INTO dl VALUES (1, 7);
+
+statement error
+SELECT * FROM table_diff('FROM dl', 'FROM dr', pk := 'id');
+----
+duplicate primary key values found in both the left (FROM dl) and right (FROM dr) inputs
 
 # ----------------------------------------------------------------------------
 # Relation arguments are queries: a bare relation name is rejected, the explicit
