@@ -550,8 +550,8 @@ string BuildDiffSQL(const DiffPlan &plan, const string &status_col, const string
 	string dup_right = "EXISTS (SELECT 1 FROM __r GROUP BY " + key_list + " HAVING count(*) > 1)";
 	string msg_both = QuoteLiteral("table_diff: duplicate primary key values found in both the left (" + plan.left +
 	                               ") and right (" + plan.right + ") inputs");
-	string msg_left = QuoteLiteral("table_diff: duplicate primary key values found in the left input (" + plan.left +
-	                               ")");
+	string msg_left =
+	    QuoteLiteral("table_diff: duplicate primary key values found in the left input (" + plan.left + ")");
 	string msg_right =
 	    QuoteLiteral("table_diff: duplicate primary key values found in the right input (" + plan.right + ")");
 	string dup_check = "CASE WHEN " + dup_left + " AND " + dup_right + " THEN error(" + msg_both + ") WHEN " +
