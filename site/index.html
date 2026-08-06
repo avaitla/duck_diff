@@ -1131,6 +1131,9 @@ $('optOut').innerHTML = hlSQL(`INSTALL duck_diff FROM community; LOAD duck_diff;
 CREATE TABLE flights AS FROM read_csv(
   'https://raw.githubusercontent.com/vega/vega-datasets/master/data/flights-3m.csv');
 
+-- .timer is a duckdb-shell dot-command (prints wall time per query). It isn't
+-- SQL: it works typed in the interactive shell or piped via stdin, but fails
+-- inside duckdb -c "..." and client libraries — time it in the host there.
 .timer on
 
 -- BASELINE (unoptimized): top-3 most-delayed flights per origin airport,
@@ -1177,7 +1180,10 @@ The slow query — top-3 most-delayed flights per origin airport:
 SETUP (once)
 1. INSTALL duck_diff FROM community; LOAD duck_diff;
 2. Freeze ground truth: CREATE TABLE golden AS <the slow query above>;
-3. Record a baseline: run it 2-3 times, keep the best time (.timer on).
+3. Record a baseline: run it 2-3 times, keep the best time. Use .timer on —
+   note it's a duckdb-shell dot-command, not SQL: fine in the interactive
+   shell or via stdin, invalid inside duckdb -c "…" or client libraries
+   (time it from the host language there).
 4. Diff key: ['origin', 'rnk'] — unique by construction here. (For your own
    query, pick a unique key, synthesizing a rank if the output has none.)
 
