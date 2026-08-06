@@ -31,5 +31,5 @@ DUCKDB=${DUCKDB:-duckdb}
 DUCK_DIFF=${DUCK_DIFF:-duck_diff}
 
 # -unsigned because duck_diff release binaries are signed with a third-party
-# key (see ../README.md#install).
+# key (see ../docs/DISTRIBUTION.md).
 { printf "LOAD '%s';\n" "$DUCK_DIFF"; cat "$1"; } | "$DUCKDB" -unsigned

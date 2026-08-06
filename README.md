@@ -1,17 +1,43 @@
-# duck_diff
+# 🦆 duck_diff
 
-A DuckDB extension for diffing two relations (tables, SQL queries, etc.) off a primary key. Given a
-"left" and a "right" relation, it reports — per key — whether the row is
-**identical**, **different**, or exists only on one side, and exactly what
-changed. Each result row carries both a JSON `diff_data` summary of the changed
-columns *and* per-column expanded columns (`<c>_left` / `<c>_right` /
-`<c>_diff_status`). It also supports a composite primary key and selecting a
-subset of columns to diff or ignore.
+Two tables — maybe two entirely different databases — one question: **are
+these actually the same rows?**
 
-## Quick start
+`duck_diff` is a DuckDB extension that diffs two relations off a primary key,
+per row and per column. Every key gets a verdict (`identical` / `different` /
+`left_only` / `right_only`), a JSON summary of exactly which columns changed
+(`diff_data`), and typed `<col>_left` / `<col>_right` / `<col>_diff_status`
+columns you can filter and compute on. Composite keys, column subsets, and
+cross-engine tolerances included.
 
-Get a DuckDB shell with `duck_diff` loaded (see [Install](#install) or
-[Building](#building)), then create two sample snapshots and diff them:
+Because each side is just a query string, the two relations can live in
+**different systems** — Postgres, MySQL, ClickHouse, BigQuery, Snowflake,
+Iceberg, Delta, MongoDB, plain Parquet/CSV files, anything DuckDB can reach —
+and everything runs locally in your DuckDB process; your data never leaves
+your pond.
+
+And since the verdict is deterministic (`n_total = n_identical`, true or
+false), it's a validation step **Claude can run in loops** (e.g. with Claude
+Code's [`/goal`](https://code.claude.com/docs/en/goal)): safely refactor a
+model, optimize a slow query, or transpile SQL to another dialect, checking
+its own correctness after every change and stopping only when the diff comes
+back clean.
+
+**[Website & recipe builder](https://avaitla.github.io/duck_diff/)** ·
+[Function reference](docs/functions.md) ·
+[Runnable demos](demo/) ·
+[AI-assisted migration](docs/ai-assisted-migration.md)
+
+```sql
+INSTALL duck_diff FROM community;   -- one time, on stock DuckDB
+LOAD duck_diff;
+```
+
+Signed per-platform release binaries and source builds:
+[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) ·
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+## 1 · Spot the odd duck — diff two tables in one line
 
 ```sql
 CREATE TABLE users_v1 AS SELECT * FROM (VALUES
@@ -40,246 +66,115 @@ FROM table_diff('FROM users_v1', 'FROM users_v2', pk := 'id') ORDER BY id;
 └────┴─────────────┴──────────────────────────────────────┴──────────────┴───────────────┴─────────────────────┘
 ```
 
-Each row gives you two views of the same diff — pick whichever fits:
-
-- **`diff_data`** — a compact JSON of just the changed columns,
-  `{"col": {"left": …, "right": …}}` (and `json_keys(diff_data)` lists which
-  columns changed).
-- **Expanded columns** — for each compared column: `<c>_left`, `<c>_right`
-  (native types), and `<c>_diff_status` (`identical` / `different` /
-  `left_only` / `right_only`). Real typed columns, so you can filter and compute
-  on them directly.
+Take `SELECT *` for every column expanded, or project just the slice your use
+case needs. Two companions round it out:
+`schema_diff(left, right)` compares column names and types without reading a
+row, and `table_diff_summary(…)` returns one row of counts and percentages —
+in sync means everything lands in `n_identical`:
 
 ```sql
--- counts + percentages
-SELECT * FROM table_diff_summary('FROM users_v1', 'FROM users_v2', pk := 'id');
-```
-```
-┌───────────┬───────────┬─────────────┬──────────────┬─────────┬─────────────┬─────────────┬───────────────┬────────────────┐
-│ n_identical │ n_different │ n_left_only │ n_right_only │ n_total │ pct_identical │ pct_different │ pct_left_only │ pct_right_only │
-├───────────┼───────────┼─────────────┼──────────────┼─────────┼─────────────┼─────────────┼───────────────┼────────────────┤
-│     1     │     1     │      1      │      1       │    4    │    25.0     │    25.0     │     25.0      │      25.0      │
-└───────────┴───────────┴─────────────┴──────────────┴─────────┴─────────────┴─────────────┴───────────────┴────────────────┘
-```
-```sql
--- or a single yes/no, simulated from the summary
-SELECT n_different + n_left_only + n_right_only = 0
+SELECT n_total = n_identical AS in_sync
 FROM table_diff_summary('FROM users_v1', 'FROM users_v2', pk := 'id');   -- false
 ```
 
-## Install
+## 2 · Get your ducks in a row — verify CDC pipes, replicas, migrations
 
-Each [GitHub Release](https://github.com/avaitla/duck_diff/releases) attaches a
-signed binary per platform. Download the one matching your DuckDB version and
-platform, **saved as `duck_diff.duckdb_extension`** (DuckDB derives the
-extension name from the filename), then load it under `-unsigned` (the binaries
-are signed with a third-party key, so unsigned extensions must be enabled — a
-launch flag, not a `SET`):
-
-```sh
-curl -L -o duck_diff.duckdb_extension \
-  https://github.com/avaitla/duck_diff/releases/download/v0.1.0/duck_diff-v1.5.2-osx_arm64.duckdb_extension
-duckdb -unsigned
-```
-
-Load it with the full filepath:
+Each relation argument is a query string, so each side can point anywhere.
+Use dollar-quoting for nested quotes, and the native pass-through functions
+(`postgres_query`, `mysql_query`, `mssql_scan`, `bigquery_query`,
+`snowflake_query`) so the remote system runs your SQL *in its own dialect*
+and ships back only the rows you asked for:
 
 ```sql
-LOAD '/path/to/duck_diff.duckdb_extension';
-SELECT * FROM table_diff('FROM a', 'FROM b', pk := 'id');
-```
-
-Platforms: `linux_amd64`, `linux_arm64`, `osx_amd64`, `osx_arm64`,
-`windows_amd64`. Prefer to build it yourself? See [Building](#building). Details
-and signature verification: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
-
-## Use cases
-
-- **Refactoring SQL** (possibly even onto a new database) and ensuring the
-  results are the same.
-- **Capturing the differences** between snapshots or points in time.
-- **Replication integrity** — spot-check that a replica matches its source, in
-  the spirit of `pt-table-checksum`.
-- **CDC pipeline validation** — audit that a change-data-capture copy
-  (ClickPipes/PeerDB, Debezium, Fivetran, …) faithfully tracks its source —
-  say Postgres → ClickHouse — catching stale rows, missed deletes, and
-  not-yet-synced inserts.
-- **Safe AI-assisted changes** — give a coding agent like Claude a ground-truth
-  check that a refactor or data-modeling change produced identical results, so
-  it can iterate on transformations safely instead of guessing. Because the
-  check is mechanical (`n_total = n_identical`, true or false), Claude can run
-  these loops **autonomously** — it validates its own correctness at every
-  step instead of arguing for it. This pairs naturally with Claude Code's
-  [`/goal`](https://code.claude.com/docs/en/goal): phrase the goal around the
-  printed diff verdict (*"…and the acceptance query returned `true` for every
-  section"*) and Claude keeps working across turns until the condition
-  verifiably holds — the evaluator checks a query result, not a claim. See
-  [docs/ai-assisted-migration.md](docs/ai-assisted-migration.md) (includes a
-  copy-paste prompt) and the bundled skills in
-  [.claude/skills/](.claude/skills/): `sql-migrate` (dialect conversion),
-  `sql-optimize` (speed it up, prove the answer didn't change), and
-  `etl-check` (sync audits).
-- **Regression tests in CI** — assert in a test suite that a model's output
-  still matches its golden snapshot, failing the build when it drifts. See
-  [examples/](examples/) for a copy-paste demonstration of writing your own
-  `table_diff` tests, runnable with nothing but the `duckdb` CLI.
-- **Simplifying Tests** - you can write sqllogic tests that simulate the results
-  of a table and quickly verify the data diff from expected to actual are the same
-
-DuckDB is a great fit since it has connectors to many databases and can run 
-locally and within customers VPC/private environment.
-
-Runnable recipes for the cross-database scenarios — Postgres, ClickHouse,
-MySQL, BigQuery, Snowflake, Iceberg, DuckLake, Parquet/S3, including the
-Postgres ↔ ClickHouse CDC audit — live in [demo/](demo/), with a
-docker-compose playground that exercises three of them end-to-end locally.
-
-## Functions
-
-See [docs/functions.md](docs/functions.md) for the full reference.
-
-| Function | Returns | Purpose |
-|----------|---------|---------|
-| `table_diff(left, right, pk := …)` | table | one row per key: key column(s), `diff_status`, `diff_data` |
-| `table_diff_summary(left, right, pk := …)` | one row | counts (and percentages) per status |
-| `schema_diff(left, right)` | table | per-column name/type comparison: `column_name`, `left_type`, `right_type`, `status` |
-
-## `table_diff` parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `left`, `right` | VARCHAR | Query strings, written as you would in SQL: a `FROM …` clause or a full `SELECT … FROM …`. E.g. `'FROM orders'`, `'FROM read_csv(''x.csv'')'`, `'SELECT id, amount FROM orders WHERE region = ''EU'''`. A bare name like `'orders'` is rejected. |
-| `pk` | VARCHAR \| LIST | **Required.** Primary key column(s); a string or a list. |
-| `require_matching_columns` | BOOLEAN | Default `true`: both relations must have identical columns (names+types), else error. Set `false` to compare only common columns. |
-| `upcast_types` | BOOLEAN | Default `false`. Set `true` (with `require_matching_columns := false`) to reconcile differing types via their common super-type, e.g. BIGINT vs INTEGER — see [function reference](docs/functions.md#cross-type-comparison). |
-| `numeric_tolerance` | DOUBLE | Treat numbers within this band as equal (`abs(left-right) <= tol`); compared columns only. |
-| `timestamp_precision` | VARCHAR | Truncate timestamp columns with `date_trunc(part, …)` before comparing, e.g. `'second'`. |
-| `null_equals_empty` | BOOLEAN | Default `false`. Treat `NULL` and `''` as equal for VARCHAR compared columns. |
-| `columns` | LIST | Restrict the compared (non-key) columns to this list. |
-| `ignore` | LIST | Exclude these columns from comparison. |
-| `context` | LIST | Also expand these **non-compared** columns as `<c>_left`/`<c>_right` (no `_diff_status`). Use `['*']` for every non-key column, which surfaces the full row for `left_only`/`right_only` rows. |
-| `prefix` | VARCHAR | Prefix for the meta columns (default `'diff_'`); change it if a key column would collide. |
-
-**Output columns, in order:**
-
-1. The **key column(s)**, under their original names (so you can `JOIN … USING (…)`).
-2. **`diff_status`** — `identical`, `different`, `left_only`, or `right_only`.
-3. **`diff_data`** — JSON of just the changed columns, types preserved.
-4. The **expanded columns** — `<c>_left`, `<c>_right`, `<c>_diff_status` per compared column.
-
-Comparison is NULL-safe: `NULL` equals `NULL`.
-
-See [docs/functions.md](docs/functions.md) for the full reference (all functions,
-`schema_diff`, and recipes like deriving `ignore`/`columns` from a query).
-
-## Diffing external sources (BigQuery, Postgres, CSV, …)
-
-Because each relation argument is a query string, any table function from
-another extension works — just write it as a `FROM …` clause. Use DuckDB's
-dollar-quoting (`$$…$$`) so the inner quotes need no escaping:
-
-```sql
-INSTALL bigquery FROM community; LOAD bigquery;
-ATTACH 'project=my-project' AS bq (TYPE bigquery, READ_ONLY);  -- uses local ADC
-
 SELECT * FROM table_diff(
-  $$ FROM bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260101') $$,
-  $$ FROM bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260526') $$,
+  $$ FROM postgres_query('pg', 'SELECT id, email, plan FROM public.customers') $$,
+  -- clickhouse_query is a three-line macro over ClickHouse's HTTP interface — see demo/
+  $$ FROM clickhouse_query('SELECT id, email, plan FROM appdb.customers FINAL
+                            WHERE _peerdb_is_deleted = 0') $$,
   pk := 'id',
-  ignore := ['updated_at', 'updated_by']   -- drop metadata churn from the comparison
+  require_matching_columns := false,
+  upcast_types := true,              -- reconcile the two type systems
+  timestamp_precision := 'second'    -- drop precision lost in transit
 );
 ```
 
-Ready-to-run recipes for this live in [demo/](demo/) — MySQL primary ↔ read
-replica, MySQL ↔ BigQuery, Postgres ↔ Snowflake, ClickHouse ↔ Parquet on S3,
-Iceberg ↔ DuckLake, Postgres ↔ Amazon S3 Tables, and Postgres ↔ ClickHouse
-(a ClickPipes CDC audit) — with every credential
-supplied via environment variables instead of being inlined in the SQL, plus
-a `report.sh` that renders any diff as a shareable HTML page.
+Per key, this catches what row counts can't: **CDC validation**
+(ClickPipes/PeerDB, Debezium, Fivetran — stale rows, missed deletes,
+not-yet-synced inserts), **replica integrity** (`pt-table-checksum`, but
+row-by-row), **migration/ELT parity** (did every row land intact?), and
+**snapshot drift** between points in time.
 
-### Performance & caching
+Ready-to-run recipes live in [demo/](demo/) — MySQL ↔ read replica,
+MySQL ↔ BigQuery, Postgres ↔ Snowflake, ClickHouse ↔ Parquet on S3,
+Iceberg ↔ DuckLake, Postgres ↔ Amazon S3 Tables, and the Postgres ↔ ClickHouse
+CDC audit — with credentials via env vars, a docker-compose playground seeded
+with intentional drift, interactive HTML reports, and one-file `uv` Python
+scripts (`diff_report.py`, `mysql_bigquery_etl.py`). Or point-and-click a
+recipe for your pair on the
+[website](https://avaitla.github.io/duck_diff/).
 
-DuckDB has no automatic cross-query result cache, and `table_diff` references
-each side more than once internally (the join plus the duplicate-key check). For
-an expensive remote source, **materialize each side once** into a local table —
-that local copy is your cache, and every subsequent diff/summary is free of the
-remote scan:
+## 3 · Same query, new pond — transpile SQL between dialects with Claude
+
+LLMs translate SQL between dialects well and can't tell when they got it
+right — the diff can. Freeze a golden snapshot, convert one section at a
+time, accept only when the diff comes back 100% identical, and feed the
+drifted rows back on failure. The full workflow, a copy-paste prompt, and
+ready-made `/goal` phrasings:
+[docs/ai-assisted-migration.md](docs/ai-assisted-migration.md).
+
+It ships as Claude Code **skills** in [.claude/skills/](.claude/skills/) —
+`sql-migrate` (dialect conversion), `etl-check` (sync audits), and
+`sql-optimize` (below) — auto-loaded in any Claude Code session opened in
+this repo; copy a folder to `~/.claude/skills/` to use it everywhere.
+
+## 4 · Fly faster, land the same — optimize a query without changing its answer
+
+The same gate turns performance tuning into a safe search: rewrite → time it
+→ diff it → **keep the rewrite only if it's faster AND the diff says
+identical** → repeat.
 
 ```sql
--- run with a file-backed db (e.g. `duckdb cache.db`) to persist across sessions
-CREATE TABLE IF NOT EXISTS jan AS
-  SELECT * FROM bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260101');
-CREATE TABLE IF NOT EXISTS may AS
-  SELECT * FROM bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260526');
-
-SELECT * FROM table_diff_summary('FROM jan', 'FROM may', pk := 'id');         -- counts + percentages
-SELECT * FROM table_diff('FROM jan', 'FROM may', pk := 'id') WHERE diff_status='different' LIMIT 20;
--- which columns change most often:
-SELECT col, count(*) FROM (
-  SELECT unnest(json_keys(diff_data)) AS col
-  FROM table_diff('FROM jan', 'FROM may', pk := 'id') WHERE diff_status='different'
-) GROUP BY col ORDER BY count(*) DESC;
+SELECT n_total = n_identical AS accepted
+FROM table_diff_summary('FROM golden', 'FROM candidate', pk := ['origin', 'rnk']);
 ```
 
-`CREATE TABLE IF NOT EXISTS` scans the source only the first time. Within a
-single query you can also force one shared scan with a `WITH x AS MATERIALIZED
-(...)` CTE.
+On a public 231k-row dataset, a quadratic self-join rewritten as a window
+function went **17.0 s → 0.01 s (~1700×)** with the diff proving all 177
+result rows byte-identical — the worked example is on the
+[website](https://avaitla.github.io/duck_diff/#sect4), and the `sql-optimize`
+skill runs the loop autonomously.
 
-## Building
+The acceptance queries you finish with double as **regression tests in CI**:
+[examples/](examples/) shows the sqllogictest pattern, runnable with nothing
+but the `duckdb` CLI.
 
-The repo vendors DuckDB and the build tooling as submodules, so a clone +
-`make` produces a DuckDB shell with `duck_diff` preloaded:
+## Functions
+
+| Function | Returns | Purpose |
+|----------|---------|---------|
+| `table_diff(left, right, pk := …)` | table | one row per key: key column(s), `diff_status`, `diff_data`, expanded per-column values |
+| `table_diff_summary(left, right, pk := …)` | one row | counts (and percentages) per status |
+| `schema_diff(left, right)` | table | per-column name/type comparison: `column_name`, `left_type`, `right_type`, `status` |
+
+Comparison is NULL-safe: `NULL` equals `NULL`. The full reference — every
+parameter (`columns`, `ignore`, `context`, `prefix`, the tolerance flags,
+cross-type comparison), output shapes, recipes, and performance/caching
+notes — is in [docs/functions.md](docs/functions.md).
+
+## Development
 
 ```sh
 git clone --recurse-submodules https://github.com/avaitla/duck_diff
 cd duck_diff
-GEN=ninja make            # first build compiles DuckDB; needs cmake + ninja
-./build/release/duckdb    # this shell already has duck_diff loaded
-
+GEN=ninja make                             # builds a duckdb shell with duck_diff loaded
 build/release/test/unittest "test/sql/*"   # run the SQL test suite
 ```
-(Cloned without submodules? `git submodule update --init --recursive`.)
 
-The extension generates SQL using `json_object` / `json_merge_patch`, so the
-bundled `json` extension is required (built in automatically for tests).
-
-### Using it in another DuckDB
-
-The build also emits a loadable binary at
-`build/release/extension/duck_diff/duck_diff.duckdb_extension`. It's locally
-built (unsigned), so load it with unsigned extensions enabled:
-
-```sh
-duckdb -unsigned
-```
-```sql
-LOAD 'build/release/extension/duck_diff/duck_diff.duckdb_extension';
-SELECT * FROM table_diff('FROM a', 'FROM b', pk := 'id');
-```
-
-> **Installing without building:** each [GitHub Release](https://github.com/avaitla/duck_diff/releases)
-> attaches signed, per-platform `.duckdb_extension` binaries (see
-> [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md)). Download the one for your
-> platform, **saved as `duck_diff.duckdb_extension`** (DuckDB derives the
-> extension name from the filename), then `LOAD` it under `-unsigned`:
-> ```sh
-> curl -L -o duck_diff.duckdb_extension \
->   https://github.com/avaitla/duck_diff/releases/download/v0.1.0/duck_diff-v1.5.2-osx_arm64.duckdb_extension
-> duckdb -unsigned -c "LOAD 'duck_diff.duckdb_extension'; SELECT * FROM table_diff('FROM a','FROM b', pk:='id');"
-> ```
-
-## TODO
-
-- **Projection pushdown.** The generated query reads every column of each
-  relation (`SELECT __t.* …`), even columns that are ignored or never compared.
-  At bind time we already know the exact set the diff needs (keys + compared +
-  context columns), so we could project just those instead. DuckDB would push
-  that narrowed column list into the scan, so native table / Parquet / remote
-  scanners (Postgres, MySQL, BigQuery) fetch only the needed columns — fewer
-  bytes over the wire, identical results. Biggest win for wide remote tables;
-  small for local columnar scans. (No help when the input is a `SELECT *`
-  passthrough — reference the table object instead.)
+Details (loadable binary, prerequisites, using a local build):
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Cutting a release:
+[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md), with notes accumulated in
+[RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 ## License
 
-[MIT](LICENSE) Bundles DuckDB, which is also MIT-licensed.
+[MIT](LICENSE). Bundles DuckDB, which is also MIT-licensed.

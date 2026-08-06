@@ -10,8 +10,9 @@ make setup    # checks that duckdb is on PATH
 make test     # runs every tests/*.test
 ```
 
-The examples assume the `duck_diff` extension is installed (see the
-[top-level README](../README.md#install)); each test `LOAD`s it.
+The examples assume the `duck_diff` extension is installed
+(`INSTALL duck_diff FROM community;`, or see
+[docs/DISTRIBUTION.md](../docs/DISTRIBUTION.md)); each test `LOAD`s it.
 
 ## The examples
 

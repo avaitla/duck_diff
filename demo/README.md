@@ -42,7 +42,7 @@ export PGPASSWORD=…
   already-exported variables.
 - `run.sh` prepends a `LOAD` of duck_diff and pipes the demo through
   `duckdb -unsigned` (release binaries of duck_diff are third-party
-  signed — see the [top-level README](../README.md#install)).
+  signed — see [docs/DISTRIBUTION.md](../docs/DISTRIBUTION.md)).
 - Overrides: `DUCKDB=/path/to/duckdb` and
   `DUCK_DIFF=/path/to/duck_diff.duckdb_extension` (defaults to the installed
   extension name `duck_diff`).

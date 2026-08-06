@@ -16,9 +16,15 @@ the original's output and the converted query's output is 100% identical.
 2. Connect DuckDB to the source and/or target systems (postgres/mysql core
    extensions, bigquery/snowflake community extensions — see demo/ for
    env-var-based ATTACH patterns), or work from exported snapshots.
-3. Freeze ground truth in a file-backed cache so iterations are fast and
-   stable: `duckdb migration_cache.db` then
-   `CREATE TABLE IF NOT EXISTS golden_<section> AS <original section's output>;`
+3. Extract and freeze the inputs, in a file-backed cache
+   (`duckdb migration_cache.db`) so iterations are fast and stable:
+   - List every source table the query reads (FROM / JOIN / CTE inputs).
+   - Snapshot each one locally:
+     `CREATE TABLE IF NOT EXISTS src_<t> AS FROM postgres_query('pg', 'SELECT * FROM <t>');`
+   - Freeze the expected output — run the original query ON the source engine
+     once: `CREATE TABLE IF NOT EXISTS golden_<section> AS <original section's output>;`
+   - Do all conversion work against these frozen tables (a DuckDB target
+     reads the `src_*` snapshots directly).
 4. `SET TimeZone = 'UTC';` and parameterize nondeterministic inputs
    (`now()`, `random()`) on both sides before comparing.
 

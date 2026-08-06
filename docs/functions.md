@@ -8,8 +8,8 @@ built-in `query()` function: `'FROM orders'`, `'FROM read_csv(''x.csv'')'`,
 like `'orders'` is **not** a query and is rejected (write `'FROM orders'`).
 When the string itself contains quotes, use DuckDB dollar-quoting to avoid
 escaping: `$$ FROM bigquery_query('bq', 'SELECT …') $$`. For diffing expensive
-remote sources efficiently, see the caching notes in the
-[README](../README.md#performance--caching).
+remote sources efficiently, see [Performance & caching](#performance--caching)
+below.
 
 ---
 
@@ -273,3 +273,33 @@ FROM table_diff('FROM snap_a', 'FROM snap_b', pk := 'id',
 ```
 
 > These knobs live on `table_diff` and `table_diff_summary`.
+
+---
+
+## Performance & caching
+
+DuckDB has no automatic cross-query result cache, and `table_diff` references
+each side more than once internally (the join plus the duplicate-key check). For
+an expensive remote source, **materialize each side once** into a local table —
+that local copy is your cache, and every subsequent diff/summary is free of the
+remote scan:
+
+```sql
+-- run with a file-backed db (e.g. `duckdb cache.db`) to persist across sessions
+CREATE TABLE IF NOT EXISTS jan AS
+  SELECT * FROM bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260101');
+CREATE TABLE IF NOT EXISTS may AS
+  SELECT * FROM bigquery_query('bq', 'SELECT * FROM snapshots.invoices_20260526');
+
+SELECT * FROM table_diff_summary('FROM jan', 'FROM may', pk := 'id');         -- counts + percentages
+SELECT * FROM table_diff('FROM jan', 'FROM may', pk := 'id') WHERE diff_status='different' LIMIT 20;
+-- which columns change most often:
+SELECT col, count(*) FROM (
+  SELECT unnest(json_keys(diff_data)) AS col
+  FROM table_diff('FROM jan', 'FROM may', pk := 'id') WHERE diff_status='different'
+) GROUP BY col ORDER BY count(*) DESC;
+```
+
+`CREATE TABLE IF NOT EXISTS` scans the source only the first time. Within a
+single query you can also force one shared scan with a `WITH x AS MATERIALIZED
+(...)` CTE.

@@ -8,15 +8,24 @@ so the agent can iterate against ground truth instead of guessing.
 
 ## The loop
 
-1. **Freeze ground truth.** Materialize the original query's output once, so
-   every iteration compares against the same rows and doesn't re-hit the
-   source system:
+1. **Extract the sources, then freeze everything.** List every source table
+   the query reads (`FROM` / `JOIN` / CTE inputs), snapshot each into a local
+   DuckDB table, then run the original query once on the source engine and
+   freeze its output as the golden. Every later iteration compares against
+   these frozen tables — neither the inputs nor the expected output can
+   drift under you, and nothing re-hits the source system:
 
    ```sql
    -- duckdb migration_cache.db
-   CREATE TABLE IF NOT EXISTS golden_orders AS
-     FROM postgres_query('pg', 'SELECT * FROM analytics.orders_rollup');
+   CREATE TABLE IF NOT EXISTS src_orders    AS FROM postgres_query('pg', 'SELECT * FROM public.orders');
+   CREATE TABLE IF NOT EXISTS src_customers AS FROM postgres_query('pg', 'SELECT * FROM public.customers');
+   CREATE TABLE IF NOT EXISTS golden_rollup AS FROM postgres_query('pg', '<the original query>');
    ```
+
+   When the target is DuckDB itself, the converted query reads the `src_*`
+   snapshots directly — transpile, run, diff, all locally. When the target is
+   another warehouse, the snapshots are your stable reference while the
+   converted query runs over the target's copy of the data.
 
 2. **Shape first.** `schema_diff` before any row comparison — a missing or
    retyped column explains most early failures in one glance:
@@ -85,8 +94,9 @@ something the goal evaluator can check from the transcript, because Claude
 prints a literal `true`/`false` each round:
 
 ```text
-/goal every section of reports/orders_rollup.sql is converted to BigQuery
-dialect and, for each one, the acceptance query
+/goal every source table reports/orders_rollup.sql reads is snapshotted into
+migration_cache.db, every section is converted to BigQuery dialect, and for
+each section the acceptance query
 SELECT n_total = n_identical FROM table_diff_summary(...) has been run and
 returned true in this session — or you hit a tolerance decision that needs me
 ```
