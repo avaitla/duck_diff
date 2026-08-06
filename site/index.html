@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>duck_diff — diff any two databases</title>
+<meta name="description" content="Generate copy-paste DuckDB SQL that diffs a source and destination table across Postgres, MySQL, ClickHouse, BigQuery, Snowflake, Iceberg, MongoDB, Parquet and more.">
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #666; --line: #d8d8d8;
+    --panel: #f7f7f7; --code-bg: #0f1419; --code-fg: #e6e1cf;
+    --accent: #b8860b; --chip-core: #d1e7dd; --chip-comm: #cfe2ff;
+    --card: #fff; --shadow: rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111417; --fg: #e8e6e3; --muted: #9aa0a6; --line: #33383d;
+      --panel: #191d21; --code-bg: #0b0e11; --code-fg: #dcd7c9;
+      --chip-core: #1e4634; --chip-comm: #1e3a5f;
+      --card: #171b1f; --shadow: rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.55 system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--fg); }
+  .wrap { max-width: 72rem; margin: 0 auto; padding: 0 1.25rem 4rem; }
+  header.hero { padding: 3rem 0 1.5rem; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 2rem; margin: 0 0 .4rem; }
+  h1 .duck { font-size: 1.6rem; }
+  .tagline { color: var(--muted); max-width: 46rem; margin: 0 0 1rem; }
+  .hero-links a { margin-right: 1.1rem; color: var(--accent); text-decoration: none; font-weight: 600; }
+  .hero-links a:hover { text-decoration: underline; }
+  h2 { font-size: 1.35rem; margin: 2.6rem 0 .4rem; }
+  h3 { font-size: 1.05rem; margin: 1.4rem 0 .4rem; }
+  .sub { color: var(--muted); margin: 0 0 1.2rem; max-width: 52rem; }
+  a { color: var(--accent); }
+
+  .install { background: var(--code-bg); color: var(--code-fg); border-radius: 8px; padding: .8rem 1rem; overflow-x: auto; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+
+  .builder { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem; }
+  .sides { display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: start; }
+  @media (max-width: 720px) { .sides { grid-template-columns: 1fr; } .swap { transform: rotate(90deg); justify-self: center; } }
+  .side { display: flex; flex-direction: column; gap: .5rem; }
+  .side label, .opts label { font-size: .8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  select, input[type=text], input[type=number] {
+    width: 100%; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--fg); font: inherit;
+  }
+  .swap { align-self: center; margin-top: 1.6rem; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+          border-radius: 999px; width: 2.4rem; height: 2.4rem; cursor: pointer; font-size: 1.05rem; }
+  .swap:hover { border-color: var(--accent); }
+  .opts { margin-top: 1.1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .8rem 1.4rem; }
+  .opt { display: flex; flex-direction: column; gap: .3rem; }
+  .opt .row { display: flex; align-items: center; gap: .5rem; }
+  .opt .row input[type=number] { width: 6rem; }
+  .opt small { color: var(--muted); line-height: 1.35; }
+  .checkline { display: flex; align-items: flex-start; gap: .5rem; }
+  .checkline input { margin-top: .2rem; }
+  .checkline b { font-weight: 600; }
+  .checkline small { display: block; color: var(--muted); }
+
+  .exts { margin: 1.2rem 0 .4rem; display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+  .exts .lbl { font-size: .8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-right: .2rem; }
+  .extchip { font-size: .8rem; padding: .12rem .6rem; border-radius: 999px; text-decoration: none; color: var(--fg); border: 1px solid transparent; }
+  .extchip.core { background: var(--chip-core); }
+  .extchip.community { background: var(--chip-comm); }
+  .extchip:hover { border-color: var(--accent); }
+
+  .codeblock { position: relative; margin: .6rem 0 0; }
+  .codeblock pre { background: var(--code-bg); color: var(--code-fg); border-radius: 8px; padding: 1rem 1.1rem; overflow-x: auto;
+                   font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0; }
+  .copy { position: absolute; top: .6rem; right: .6rem; border: 1px solid #444; background: #1c2128; color: #ddd;
+          border-radius: 6px; padding: .25rem .7rem; font-size: .78rem; cursor: pointer; }
+  .copy:hover { border-color: var(--accent); }
+  .notes { margin: .8rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: .9rem; }
+  .notes li { margin: .25rem 0; }
+  .notes code, .sub code, .checkline code, td code { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 .25rem; font-size: .85em; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: 1rem; margin-top: 1rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.1rem;
+          box-shadow: 0 1px 3px var(--shadow); display: flex; flex-direction: column; gap: .5rem; }
+  .card h3 { margin: 0; font-size: 1rem; }
+  .card .pair { font-size: .8rem; color: var(--accent); font-weight: 700; letter-spacing: .02em; }
+  .card p { margin: 0; color: var(--muted); font-size: .88rem; flex: 1; }
+  .card .actions { display: flex; gap: .9rem; font-size: .85rem; }
+  .card .actions button { border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 6px;
+                          padding: .3rem .7rem; cursor: pointer; font-size: .85rem; }
+  .card .actions button:hover { border-color: var(--accent); }
+
+  .morelist { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .6rem; }
+  footer { margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .88rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1><span class="duck">🦆</span> duck_diff</h1>
+  <p class="tagline">A DuckDB extension that diffs two relations off a primary key — per row, per column —
+  across <em>any</em> pair of systems DuckDB can reach: Postgres, MySQL, ClickHouse, BigQuery, Snowflake,
+  Iceberg, Delta, MongoDB, plain Parquet files, and more. Pick a source and destination below and copy the
+  generated SQL — it runs locally in the <code>duckdb</code> CLI; your data never leaves your machine.</p>
+  <p class="hero-links">
+    <a href="https://github.com/avaitla/duck_diff">GitHub</a>
+    <a href="https://duckdb.org/community_extensions/extensions/duck_diff">Community extension</a>
+    <a href="https://github.com/avaitla/duck_diff/blob/main/docs/functions.md">Function reference</a>
+    <a href="https://github.com/avaitla/duck_diff/tree/main/demo">Runnable demos</a>
+  </p>
+  <div class="install">$ duckdb
+INSTALL duck_diff FROM community;   -- one time
+LOAD duck_diff;</div>
+</header>
+
+<h2>Build a cross-database diff</h2>
+<p class="sub">Choose the two systems and what to compare on each side. The recipe always has three steps:
+a <strong>schema diff</strong> (do the columns and types even line up?), a <strong>summary</strong>
+(one row of counts — in sync means everything is <code>n_identical</code>), and a
+<strong>drill-down</strong> (every drifted key and exactly which columns changed).
+Credentials come from environment variables — nothing sensitive lands in the SQL.</p>
+
+<div class="builder">
+  <div class="sides">
+    <div class="side">
+      <label>Source (left)</label>
+      <select id="srcSys"></select>
+      <label id="srcObjLabel">Table</label>
+      <input type="text" id="srcObj" spellcheck="false">
+    </div>
+    <button class="swap" id="swapBtn" title="Swap source and destination">⇄</button>
+    <div class="side">
+      <label>Destination (right)</label>
+      <select id="dstSys"></select>
+      <label id="dstObjLabel">Table</label>
+      <input type="text" id="dstObj" spellcheck="false">
+    </div>
+  </div>
+
+  <div class="opts">
+    <div class="opt">
+      <label>Primary key column(s)</label>
+      <input type="text" id="pk" value="id" spellcheck="false" placeholder="id  —  or: customer_id, order_month">
+      <small>Comma-separate for a composite key.</small>
+    </div>
+    <div class="opt">
+      <label>Ignore columns (optional)</label>
+      <input type="text" id="ignore" spellcheck="false" placeholder="updated_at, synced_at">
+      <small>Metadata churn you don't want flagged.</small>
+    </div>
+    <div class="opt">
+      <div class="checkline"><input type="checkbox" id="optUpcast">
+        <span><b>Type promotion</b> (<code>upcast_types</code>)<small>Reconcile differing types — MySQL <code>INT</code> vs BigQuery <code>INT64</code>, Postgres <code>NUMERIC</code> vs Snowflake <code>NUMBER</code> — on their common super-type. Auto-enabled for cross-system pairs.</small></span></div>
+      <div class="checkline"><input type="checkbox" id="optNullEmpty">
+        <span><b>NULL = ''</b> (<code>null_equals_empty</code>)<small>Treat NULL and empty string as equal for text columns — common after CSV round-trips.</small></span></div>
+    </div>
+    <div class="opt">
+      <div class="checkline"><input type="checkbox" id="optTol">
+        <span><b>Numeric tolerance</b> (<code>numeric_tolerance</code>)<small>Floating-point values rarely survive two engines bit-for-bit. Treat <code>|left − right| ≤ ε</code> as identical.</small></span></div>
+      <div class="row" style="margin:.2rem 0 0 1.6rem"><input type="number" id="tolVal" value="0.01" step="0.001" min="0"> <small>ε</small></div>
+      <div class="checkline" style="margin-top:.4rem"><input type="checkbox" id="optTs">
+        <span><b>Timestamp truncation</b> (<code>timestamp_precision</code>)<small>Drop sub-second (or finer) noise lost in transit before comparing.</small></span></div>
+      <div class="row" style="margin:.2rem 0 0 1.6rem">
+        <select id="tsVal" style="width:auto"><option>second</option><option>millisecond</option><option>minute</option><option>hour</option><option>day</option></select>
+      </div>
+    </div>
+    <div class="opt">
+      <div class="checkline"><input type="checkbox" id="optContext">
+        <span><b>Full-row context</b> (<code>context := ['*']</code>)<small>Also expand every non-compared column as <code>&lt;c&gt;_left</code>/<code>&lt;c&gt;_right</code>, so <code>left_only</code>/<code>right_only</code> rows arrive with their whole row visible.</small></span></div>
+    </div>
+  </div>
+
+  <div class="exts" id="extRow"></div>
+
+  <h3 style="margin-top:1.2rem">1 · Export credentials <span style="color:var(--muted);font-weight:400">(placeholders — swap in real values, or use a secret-manager wrapper like <code>op run</code> / <code>doppler run</code>)</span></h3>
+  <div class="codeblock"><button class="copy" data-for="envOut">Copy</button><pre id="envOut"></pre></div>
+
+  <h3>2 · Run the SQL in <code>duckdb</code></h3>
+  <div class="codeblock"><button class="copy" data-for="sqlOut">Copy</button><pre id="sqlOut"></pre></div>
+
+  <ul class="notes" id="noteList"></ul>
+</div>
+
+<h2>Example playbook</h2>
+<p class="sub">Seven scenarios from the repo's <a href="https://github.com/avaitla/duck_diff/tree/main/demo">demo suite</a> —
+each card loads the matching recipe into the builder above, and links to a fully runnable version
+(env-var secrets, HTML reports, and a docker-compose playground with intentionally drifted data).</p>
+<div class="cards" id="cardGrid"></div>
+
+<h2>More sources</h2>
+<p class="sub">Both relation arguments are just query strings, so <em>any</em> extension that exposes a table
+or query function can feed <code>table_diff</code>. Other community connectors you can point it at:</p>
+<div class="morelist" id="moreList"></div>
+
+<h2>Diffing non-relational sources</h2>
+<p class="sub">MongoDB (and Elasticsearch, and friends) aren't tables — but the connectors flatten them into
+tables via schema inference, and duck_diff takes it from there. The recipe: project a <em>stable field list</em>
+in the relation query (<code>SELECT _id, email, plan FROM mongo_db.appdb.users</code>) and diff on
+<code>pk&nbsp;:=&nbsp;'_id'</code>. Fields missing from a document simply read as NULL — comparison is NULL-safe,
+so NULL equals NULL. Nested sub-documents surface as STRUCT/JSON columns: compare specific extracted paths, or
+serialize with <code>to_json(…)</code> for a whole-subtree equality check. And because documents in one collection
+can disagree about their own shape, run the <code>schema_diff</code> step first — it shows exactly what tabular
+schema was inferred on each side before any rows are read.</p>
+
+<footer>
+  <p>duck_diff is MIT-licensed. Diffs run entirely in your local DuckDB process — this page only generates SQL, it connects to nothing.
+  <a href="https://github.com/avaitla/duck_diff">Source & docs on GitHub</a> ·
+  <a href="https://duckdb.org/community_extensions/extensions/duck_diff">duck_diff on the DuckDB community extension repo</a></p>
+</footer>
+
+</div>
+<script>
+'use strict';
+
+/* ---------- extension registry (links: core vs community) ---------- */
+const CORE = (name, slug) => ({ name, kind: 'core',
+  url: 'https://duckdb.org/docs/stable/core_extensions/' + (slug || name) });
+const COMM = name => ({ name, kind: 'community',
+  url: 'https://duckdb.org/community_extensions/extensions/' + name });
+const DUCK_DIFF_EXT = COMM('duck_diff');
+
+/* ---------- helpers ---------- */
+const sfxOf = (side, same) => (same && side === 'dst') ? '_DST' : '';
+function pgLikeSecret(secret, alias, type, vars, sfx) {
+  return `CREATE SECRET ${secret} (
+    TYPE ${type},
+    HOST     getenv('${vars}HOST${sfx}'),
+    PORT     getenv('${vars}PORT${sfx}')::INTEGER,
+    DATABASE getenv('${vars}DATABASE${sfx}'),
+    USER     getenv('${vars}USER${sfx}'),
+    PASSWORD getenv('${vars}PASSWORD${sfx}')
+);
+ATTACH '' AS ${alias} (TYPE ${type}, SECRET ${secret}, READ_ONLY);`;
+}
+
+/* ---------- system catalog ----------
+   Each build(side, sfx, obj) returns:
+   { exts: [..], env: ['export FOO=bar', '# comment'], setup: 'SQL',
+     from: 'FROM …', notes: [..], needsAws: bool } */
+const SYSTEMS = [
+{ group: 'Databases', items: [
+
+{ id: 'postgres', label: 'PostgreSQL', objLabel: 'Table (schema-qualified)', objDefault: 'public.orders',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('postgres')],
+    env: [`export PGHOST${sfx}=db.example.com`, `export PGPORT${sfx}=5432`,
+          `export PGDATABASE${sfx}=appdb`, `export PGUSER${sfx}=readonly`, `export PGPASSWORD${sfx}=…`],
+    setup: pgLikeSecret('pg_secret_' + side, 'pg_' + side, 'postgres', 'PG', sfx),
+    from: `FROM pg_${side}.${obj}`, notes: [] }) },
+
+{ id: 'mysql', label: 'MySQL / MariaDB', objLabel: 'Table', objDefault: 'orders',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('mysql')],
+    env: [`export MYSQL_HOST${sfx}=db.example.com`, `export MYSQL_PORT${sfx}=3306`,
+          `export MYSQL_DATABASE${sfx}=appdb`, `export MYSQL_USER${sfx}=readonly`, `export MYSQL_PASSWORD${sfx}=…`],
+    setup: `CREATE SECRET my_secret_${side} (
+    TYPE mysql,
+    HOST     getenv('MYSQL_HOST${sfx}'),
+    PORT     getenv('MYSQL_PORT${sfx}')::INTEGER,
+    DATABASE getenv('MYSQL_DATABASE${sfx}'),
+    USER     getenv('MYSQL_USER${sfx}'),
+    PASSWORD getenv('MYSQL_PASSWORD${sfx}')
+);
+ATTACH '' AS my_${side} (TYPE mysql, SECRET my_secret_${side}, READ_ONLY);`,
+    from: `FROM my_${side}.${obj}`, notes: [] }) },
+
+{ id: 'mssql', label: 'SQL Server', objLabel: 'Table (schema-qualified)', objDefault: 'dbo.orders',
+  build: (side, sfx, obj) => ({
+    exts: [COMM('mssql')],
+    env: ['# SQL Server: the mssql extension attaches by URI — edit it in the SQL below.'],
+    setup: `-- EDIT ME: SQL Server connection URI (native TDS, TLS via use_encrypt).
+-- Keep the real URI out of checked-in files.
+ATTACH 'mssql://user:password@sqlserver.example.com:1433?database=appdb&use_encrypt=true' AS ms_${side};`,
+    from: `FROM ms_${side}.${obj}`, notes: [] }) },
+
+{ id: 'sqlite', label: 'SQLite', objLabel: 'Table', objDefault: 'orders',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('sqlite')],
+    env: [],
+    setup: `-- EDIT ME: path to the SQLite file
+ATTACH 'app${sfx ? '_dst' : ''}.sqlite' AS sq_${side} (TYPE sqlite, READ_ONLY);`,
+    from: `FROM sq_${side}.${obj}`, notes: [] }) },
+
+{ id: 'duckdb', label: 'DuckDB file', objLabel: 'Table', objDefault: 'orders',
+  build: (side, sfx, obj) => ({
+    exts: [],
+    env: [],
+    setup: `-- EDIT ME: path to the DuckDB database file
+ATTACH 'snapshot${sfx ? '_dst' : ''}.duckdb' AS db_${side} (READ_ONLY);`,
+    from: `FROM db_${side}.${obj}`,
+    notes: ['Handy for point-in-time snapshots: keep yesterday’s copy as a .duckdb file and diff today against it.'] }) },
+
+{ id: 'motherduck', label: 'MotherDuck', objLabel: 'Table', objDefault: 'main.orders',
+  build: (side, sfx, obj) => ({
+    exts: [{ name: 'motherduck', kind: 'core', url: 'https://motherduck.com/docs/getting-started/' }],
+    env: [`export motherduck_token${sfx ? '_DST' : ''}=…   # MotherDuck service token`],
+    setup: `-- EDIT ME: your MotherDuck database name (token is read from motherduck_token)
+ATTACH 'md:my_db' AS md_${side};`,
+    from: `FROM md_${side}.${obj}`, notes: [] }) },
+
+{ id: 'mongo', label: 'MongoDB', objLabel: 'db.collection', objDefault: 'appdb.users', pkDefault: '_id',
+  build: (side, sfx, obj) => ({
+    exts: [COMM('mongo')],
+    env: ['# MongoDB: connection is set in the ATTACH string below (Atlas: your cluster host).'],
+    setup: `-- EDIT ME: MongoDB connection (supports standalone and Atlas)
+ATTACH 'host=localhost port=27017' AS mg_${side} (TYPE mongo);`,
+    from: `FROM mg_${side}.${obj}`,
+    notes: [`MongoDB isn’t relational: the connector infers a tabular schema from the documents. ` +
+      `Project a stable field list (SELECT _id, email, … FROM mg_${side}.${obj}) and diff on pk := '_id'. ` +
+      `Missing fields read as NULL (comparison is NULL-safe); nested sub-documents arrive as STRUCT/JSON — ` +
+      `compare extracted paths, or to_json(…) them for whole-subtree equality.`] }) },
+
+{ id: 'cassandra', label: 'Cassandra / ScyllaDB', objLabel: 'Table', objDefault: 'users',
+  build: (side, sfx, obj) => ({
+    exts: [COMM('cassandra')],
+    env: ['# Cassandra: connection is set in the ATTACH string below.'],
+    setup: `-- EDIT ME: Cassandra contact point + keyspace
+ATTACH 'host=127.0.0.1 port=9042 keyspace=appdb' AS cs_${side} (TYPE cassandra);`,
+    from: `FROM cs_${side}.${obj}`,
+    notes: ['Cassandra rows are keyed by partition key — that is usually the natural pk for the diff.'] }) },
+]},
+
+{ group: 'Warehouses & analytics', items: [
+
+{ id: 'bigquery', label: 'BigQuery', objLabel: 'dataset.table', objDefault: 'analytics.orders',
+  build: (side, sfx, obj) => ({
+    exts: [COMM('bigquery')],
+    env: [`export BQ_PROJECT${sfx}=my-gcp-project`,
+          '# BigQuery auth = Application Default Credentials:',
+          '#   export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json',
+          '#   (or: gcloud auth application-default login)'],
+    setup: '',
+    from: `FROM bigquery_query(getenv('BQ_PROJECT${sfx}'), 'SELECT * FROM ${obj}')`,
+    notes: [] }) },
+
+{ id: 'snowflake', label: 'Snowflake', objLabel: 'schema.table', objDefault: 'marts.orders',
+  build: (side, sfx, obj) => ({
+    exts: [COMM('snowflake')],
+    env: [`export SNOWFLAKE_ACCOUNT${sfx}=xy12345.us-east-1`, `export SNOWFLAKE_USER${sfx}=reader`,
+          `export SNOWFLAKE_PASSWORD${sfx}=…`, `export SNOWFLAKE_DATABASE${sfx}=analytics`,
+          `export SNOWFLAKE_WAREHOUSE${sfx}=compute_wh`],
+    setup: `CREATE SECRET snow_${side} (
+    TYPE snowflake,
+    ACCOUNT   getenv('SNOWFLAKE_ACCOUNT${sfx}'),
+    USER      getenv('SNOWFLAKE_USER${sfx}'),
+    PASSWORD  getenv('SNOWFLAKE_PASSWORD${sfx}'),
+    DATABASE  getenv('SNOWFLAKE_DATABASE${sfx}'),
+    WAREHOUSE getenv('SNOWFLAKE_WAREHOUSE${sfx}')
+);`,
+    from: `FROM snowflake_query('SELECT * FROM ${obj}', 'snow_${side}')`,
+    notes: [] }) },
+
+{ id: 'clickhouse', label: 'ClickHouse', objLabel: 'db.table (ClickHouse SQL allowed)', objDefault: 'appdb.customers',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('httpfs', 'httpfs/overview')],
+    env: [`export CLICKHOUSE_URL${sfx}=https://instance.clickhouse.cloud:8443`,
+          `export CLICKHOUSE_USER${sfx}=default`, `export CLICKHOUSE_PASSWORD${sfx}=…`],
+    setup: `-- ClickHouse needs no extension: its HTTP interface returns Parquet,
+-- which read_parquet() consumes directly. Auth rides in request headers,
+-- scoped to just this endpoint.
+CREATE SECRET clickhouse_auth_${side} (
+    TYPE http,
+    EXTRA_HTTP_HEADERS MAP {
+        'X-ClickHouse-User': getenv('CLICKHOUSE_USER${sfx}'),
+        'X-ClickHouse-Key':  getenv('CLICKHOUSE_PASSWORD${sfx}')
+    },
+    SCOPE getenv('CLICKHOUSE_URL${sfx}')
+);
+CREATE MACRO clickhouse_query_${side}(q) AS TABLE
+FROM read_parquet(concat(getenv('CLICKHOUSE_URL${sfx}'),
+                         '/?default_format=Parquet&query=', url_encode(q)));`,
+    from: `FROM clickhouse_query_${side}('SELECT * FROM ${obj}')`,
+    notes: [`Auditing a ClickPipes/PeerDB CDC destination? Read it as ` +
+      `"SELECT … FROM db.table FINAL WHERE _peerdb_is_deleted = 0" so row versions collapse and CDC-deleted rows drop out.`],
+    tz: true }) },
+
+{ id: 'elasticsearch', label: 'Elasticsearch', objLabel: 'Index', objDefault: 'products',
+  build: (side, sfx, obj) => ({
+    exts: [COMM('elasticsearch')],
+    env: [`export ES_HOST${sfx}=localhost`, `export ES_USER${sfx}=elastic`, `export ES_PASSWORD${sfx}=…`],
+    setup: '',
+    from: `FROM elasticsearch_query(
+       host := getenv('ES_HOST${sfx}'), index := '${obj}',
+       username := getenv('ES_USER${sfx}'), password := getenv('ES_PASSWORD${sfx}'), use_ssl := true)`,
+    notes: ['Documents are flattened via schema inference — pick a field that uniquely identifies a document as the pk.'] }) },
+]},
+
+{ group: 'Lakehouse & catalogs', items: [
+
+{ id: 'iceberg', label: 'Iceberg', objLabel: 'Table path (or catalog ref)', objDefault: 's3://lake/warehouse/db/orders',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('iceberg', 'iceberg/overview'), CORE('httpfs', 'httpfs/overview'), CORE('aws')],
+    env: [], setup: '',
+    from: `FROM iceberg_scan('${obj}')`,
+    notes: [], needsAws: obj.startsWith('s3://') }) },
+
+{ id: 's3tables', label: 'Amazon S3 Tables', objLabel: 'namespace.table', objDefault: 'crm.customers',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('iceberg', 'iceberg/overview'), CORE('httpfs', 'httpfs/overview'), CORE('aws')],
+    env: [],
+    setup: `-- EDIT ME: your table-bucket ARN (aws s3tables list-table-buckets).
+-- The ARN is configuration, not a secret — ATTACH needs a literal string.
+ATTACH 'arn:aws:s3tables:us-east-1:111122223333:bucket/analytics-tables'
+    AS s3t_${side} (TYPE iceberg, ENDPOINT_TYPE s3_tables);`,
+    from: `FROM s3t_${side}.${obj}`, notes: [], needsAws: true }) },
+
+{ id: 'delta', label: 'Delta Lake', objLabel: 'Table path', objDefault: 's3://lake/silver/orders',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('delta'), CORE('httpfs', 'httpfs/overview'), CORE('aws')],
+    env: [], setup: '',
+    from: `FROM delta_scan('${obj}')`,
+    notes: [], needsAws: obj.startsWith('s3://') }) },
+
+{ id: 'ducklake', label: 'DuckLake', objLabel: 'Table', objDefault: 'orders',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('ducklake'), CORE('postgres'), CORE('httpfs', 'httpfs/overview'), CORE('aws')],
+    env: [`export DUCKLAKE_PG_HOST${sfx}=catalog-db.example.com`, `export DUCKLAKE_PG_PORT${sfx}=5432`,
+          `export DUCKLAKE_PG_DATABASE${sfx}=lake_catalog`, `export DUCKLAKE_PG_USER${sfx}=lake`,
+          `export DUCKLAKE_PG_PASSWORD${sfx}=…`, `export DUCKLAKE_DATA_PATH${sfx}=s3://lake-bucket/data`],
+    setup: `-- DuckLake = catalog metadata in Postgres + data files in S3.
+CREATE SECRET lake_catalog_pg_${side} (
+    TYPE postgres,
+    HOST     getenv('DUCKLAKE_PG_HOST${sfx}'),
+    PORT     getenv('DUCKLAKE_PG_PORT${sfx}')::INTEGER,
+    DATABASE getenv('DUCKLAKE_PG_DATABASE${sfx}'),
+    USER     getenv('DUCKLAKE_PG_USER${sfx}'),
+    PASSWORD getenv('DUCKLAKE_PG_PASSWORD${sfx}')
+);
+CREATE SECRET lake_cfg_${side} (
+    TYPE ducklake,
+    METADATA_PATH '',
+    DATA_PATH getenv('DUCKLAKE_DATA_PATH${sfx}'),
+    METADATA_PARAMETERS MAP {'TYPE': 'postgres', 'SECRET': 'lake_catalog_pg_${side}'}
+);
+ATTACH 'ducklake:lake_cfg_${side}' AS lake_${side} (READ_ONLY);`,
+    from: `FROM lake_${side}.${obj}`, notes: [], needsAws: true }) },
+]},
+
+{ group: 'Files & object storage', items: [
+
+{ id: 'parquet', label: 'Parquet files', objLabel: 'Path / glob (local, s3://, https://)', objDefault: 's3://bucket/events/*.parquet',
+  build: (side, sfx, obj) => ({
+    exts: obj.match(/^(s3|https?|gs|r2):/) ? [CORE('httpfs', 'httpfs/overview'), CORE('aws')] : [],
+    env: [], setup: '',
+    from: `FROM read_parquet('${obj}')`, notes: [], needsAws: obj.startsWith('s3://') }) },
+
+{ id: 'csv', label: 'CSV files', objLabel: 'Path / glob (local, s3://, https://)', objDefault: 'exports/orders.csv',
+  build: (side, sfx, obj) => ({
+    exts: obj.match(/^(s3|https?|gs|r2):/) ? [CORE('httpfs', 'httpfs/overview'), CORE('aws')] : [],
+    env: [], setup: '',
+    from: `FROM read_csv('${obj}')`,
+    notes: ['CSV loses type fidelity — “Type promotion” plus “NULL = empty string” usually make the comparison fair.'],
+    needsAws: obj.startsWith('s3://') }) },
+
+{ id: 'json', label: 'JSON / NDJSON files', objLabel: 'Path / glob', objDefault: 'exports/orders.ndjson',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('json')].concat(obj.match(/^(s3|https?|gs|r2):/) ? [CORE('httpfs', 'httpfs/overview')] : []),
+    env: [], setup: '',
+    from: `FROM read_json('${obj}')`, notes: [], needsAws: obj.startsWith('s3://') }) },
+
+{ id: 'excel', label: 'Excel (.xlsx)', objLabel: 'File path', objDefault: 'report.xlsx',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('excel')],
+    env: [], setup: '',
+    from: `FROM read_xlsx('${obj}')`, notes: [] }) },
+
+{ id: 'avro', label: 'Avro files', objLabel: 'Path / glob', objDefault: 'data/events.avro',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('avro')],
+    env: [], setup: '',
+    from: `FROM read_avro('${obj}')`, notes: [] }) },
+
+{ id: 'azure', label: 'Azure Blob (Parquet)', objLabel: 'az:// path / glob', objDefault: 'az://container/events/*.parquet',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('azure'), CORE('httpfs', 'httpfs/overview')],
+    env: [`export AZURE_STORAGE_CONNECTION_STRING${sfx}=…`],
+    setup: `CREATE SECRET az_${side} (
+    TYPE azure,
+    CONNECTION_STRING getenv('AZURE_STORAGE_CONNECTION_STRING${sfx}')
+);`,
+    from: `FROM read_parquet('${obj}')`,
+    notes: ['Any reader works on az:// paths — swap read_parquet for read_csv / read_json as needed.'] }) },
+
+{ id: 'gcs', label: 'Google Cloud Storage (Parquet)', objLabel: 'gs:// path / glob', objDefault: 'gs://bucket/events/*.parquet',
+  build: (side, sfx, obj) => ({
+    exts: [CORE('httpfs', 'httpfs/overview')],
+    env: [`export GCS_HMAC_KEY_ID${sfx}=…`, `export GCS_HMAC_SECRET${sfx}=…   # GCS interoperability (HMAC) keys`],
+    setup: `CREATE SECRET gcs_${side} (
+    TYPE gcs,
+    KEY_ID getenv('GCS_HMAC_KEY_ID${sfx}'),
+    SECRET getenv('GCS_HMAC_SECRET${sfx}')
+);`,
+    from: `FROM read_parquet('${obj}')`, notes: [] }) },
+]},
+
+{ group: 'SaaS', items: [
+
+{ id: 'gsheets', label: 'Google Sheets', objLabel: 'Spreadsheet URL', objDefault: 'https://docs.google.com/spreadsheets/d/…/edit',
+  build: (side, sfx, obj) => ({
+    exts: [COMM('gsheets')],
+    env: ['# Google Sheets: CREATE SECRET (TYPE gsheet) opens browser auth;',
+          "# headless alternative: PROVIDER access_token with TOKEN getenv('GSHEET_TOKEN')"],
+    setup: `CREATE SECRET (TYPE gsheet);  -- interactive browser auth`,
+    from: `FROM read_gsheet('${obj}')`,
+    notes: ['Great for “does the hand-maintained sheet still match the database?” checks.'] }) },
+]},
+];
+
+const ALL = SYSTEMS.flatMap(g => g.items);
+const byId = id => ALL.find(s => s.id === id);
+
+/* ---------- more community connectors (links only) ---------- */
+const MORE = ['salesforce', 'redis', 'splunk', 'prometheus', 'datadog', 'loki', 'hdfs', 'onelake',
+  'paimon', 'gdrive', 'airport', 'nanodbc', 'adbc_scanner', 'duckdb_delta_sharing', 'firebird', 'hive_metastore'];
+
+/* ---------- demo cards ---------- */
+const CARDS = [
+  { title: 'Replica drift', pair: 'MySQL ↔ MySQL', file: 'mysql_primary_vs_replica.sql',
+    desc: 'Is the read replica in sync with its primary? pt-table-checksum, but row-by-row and column-by-column.',
+    preset: { src: ['mysql', 'orders'], dst: ['mysql', 'orders'], pk: 'id' } },
+  { title: 'ELT landing check', pair: 'MySQL ↔ BigQuery', file: 'mysql_vs_bigquery.sql',
+    desc: 'Did the migration/ELT copy land intact — every row, every value?',
+    preset: { src: ['mysql', 'orders'], dst: ['bigquery', 'analytics.orders'], pk: 'id', ts: true } },
+  { title: 'Warehouse rewrite parity', pair: 'Postgres ↔ Snowflake', file: 'postgres_vs_snowflake.sql',
+    desc: 'A rollup was rewritten on Snowflake — same numbers? Composite key + sub-cent tolerance.',
+    preset: { src: ['postgres', 'public.monthly_revenue'], dst: ['snowflake', 'marts.monthly_revenue'],
+              pk: 'customer_id, order_month', tol: true } },
+  { title: 'Bulk-load verification', pair: 'ClickHouse ↔ Parquet on S3', file: 'clickhouse_vs_s3_parquet.sql',
+    desc: 'A table was bulk-loaded from Parquet files — confirm it matches the source files exactly.',
+    preset: { src: ['clickhouse', 'events.clicks'], dst: ['parquet', 's3://bucket/events/*.parquet'], pk: 'event_id' } },
+  { title: 'Lakehouse migration', pair: 'Iceberg ↔ DuckLake', file: 'iceberg_vs_ducklake.sql',
+    desc: 'Moving Iceberg tables to DuckLake (Postgres catalog, S3 data)? Verify parity before cutover.',
+    preset: { src: ['iceberg', 's3://lake/warehouse/db/orders'], dst: ['ducklake', 'orders'], pk: 'order_id' } },
+  { title: 'Analytics copy audit', pair: 'Postgres ↔ S3 Tables', file: 'postgres_vs_s3tables.sql',
+    desc: 'Is the CDC/ETL copy in the Amazon S3 Tables bucket faithful to the OLTP source?',
+    preset: { src: ['postgres', 'public.customers'], dst: ['s3tables', 'crm.customers'],
+              pk: 'customer_id', ignore: 'synced_at' } },
+  { title: 'CDC pipeline validation', pair: 'Postgres ↔ ClickHouse', file: 'postgres_vs_clickhouse.sql',
+    desc: 'Audit a ClickPipes (PeerDB) pipe: FINAL-collapsed, delete-aware, catching stale rows and missed syncs.',
+    preset: { src: ['postgres', 'public.customers'],
+              dst: ['clickhouse', 'appdb.customers FINAL WHERE _peerdb_is_deleted = 0'], pk: 'id', ts: true } },
+];
+
+/* ---------- DOM ---------- */
+const $ = id => document.getElementById(id);
+const srcSys = $('srcSys'), dstSys = $('dstSys'), srcObj = $('srcObj'), dstObj = $('dstObj');
+
+for (const sel of [srcSys, dstSys]) {
+  for (const g of SYSTEMS) {
+    const og = document.createElement('optgroup');
+    og.label = g.group;
+    for (const s of g.items) {
+      const o = document.createElement('option');
+      o.value = s.id; o.textContent = s.label;
+      og.appendChild(o);
+    }
+    sel.appendChild(og);
+  }
+}
+
+function setSide(sel, objInput, labelEl, id, obj) {
+  sel.value = id;
+  const s = byId(id);
+  labelEl.textContent = s.objLabel;
+  objInput.value = obj !== undefined ? obj : s.objDefault;
+  objInput.placeholder = s.objDefault;
+}
+
+/* ---------- generation ---------- */
+function pkList() {
+  return $('pk').value.split(',').map(s => s.trim()).filter(Boolean);
+}
+function generate() {
+  const L = byId(srcSys.value), R = byId(dstSys.value);
+  const same = L.id === R.id;
+  const lObj = srcObj.value.trim() || L.objDefault;
+  const rObj = dstObj.value.trim() || R.objDefault;
+  const left = L.build('src', '', lObj);
+  const right = R.build('dst', sfxOf('dst', same), rObj);
+
+  // extensions (deduped), duck_diff always first
+  const exts = [DUCK_DIFF_EXT];
+  for (const e of [...left.exts, ...right.exts])
+    if (!exts.some(x => x.name === e.name)) exts.push(e);
+
+  // extension chips
+  $('extRow').innerHTML = '<span class="lbl">Extensions used</span>' + exts.map(e =>
+    `<a class="extchip ${e.kind}" href="${e.url}" target="_blank" rel="noopener">${e.name} · ${e.kind}</a>`).join('');
+
+  // env block
+  const envLines = [...left.env];
+  for (const l of right.env) if (!envLines.includes(l)) envLines.push(l);
+  if (left.needsAws || right.needsAws)
+    envLines.push('# S3 access: the standard AWS chain is used automatically',
+                  '#   (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION, an AWS_PROFILE, or an IAM role)');
+  if (!envLines.length) envLines.push('# no credentials needed for this pair');
+  $('envOut').textContent = envLines.join('\n');
+
+  // options — each arg carries an explanatory comment into the generated SQL
+  const pks = pkList().length ? pkList() : ['id'];
+  const pkSql = pks.length === 1 ? `'${pks[0]}'` : '[' + pks.map(p => `'${p}'`).join(', ') + ']';
+  const args = [{ sql: `pk := ${pkSql}` }];
+  if ($('optUpcast').checked) {
+    args.push({ sql: 'require_matching_columns := false', c: "schemas needn't match exactly — compare the shared columns" });
+    args.push({ sql: 'upcast_types := true', c: 'type promotion: INT32 vs INT64, NUMERIC vs NUMBER, TEXT vs STRING, … compared on their common super-type' });
+  }
+  if ($('optTol').checked)
+    args.push({ sql: `numeric_tolerance := ${$('tolVal').value || '0.01'}`, c: 'floating point rarely survives two engines bit-for-bit: |left − right| ≤ ε counts as identical' });
+  if ($('optTs').checked)
+    args.push({ sql: `timestamp_precision := '${$('tsVal').value}'`, c: 'truncate timestamps before comparing — drops precision lost in transit' });
+  if ($('optNullEmpty').checked)
+    args.push({ sql: 'null_equals_empty := true', c: "NULL and '' count as the same VARCHAR value (CSV round-trips)" });
+  const ignores = $('ignore').value.split(',').map(s => s.trim()).filter(Boolean);
+  if (ignores.length)
+    args.push({ sql: `ignore := [${ignores.map(c => `'${c}'`).join(', ')}]`, c: 'metadata churn excluded from comparison' });
+  if ($('optContext').checked)
+    args.push({ sql: "context := ['*']", c: 'expand non-compared columns too, so one-sided rows show their full row' });
+  const optClean = args.map((a, i) =>
+    a.sql + (i < args.length - 1 ? ',' : '') + (a.c ? '  -- ' + a.c : '')).join('\n    ');
+
+  const installs = exts.map(e =>
+    (e.kind === 'community' ? `INSTALL ${e.name} FROM community;` : `INSTALL ${e.name};`) + `\nLOAD ${e.name};`)
+    .filter((v, i, a) => a.indexOf(v) === i).join('\n');
+
+  const pieces = [];
+  pieces.push(`-- ============================================================
+-- duck_diff · ${L.label} (left) ↔ ${R.label} (right)
+-- Copy into the duckdb CLI. Credentials come from environment
+-- variables — nothing sensitive is inlined. Fix any EDIT ME lines.
+-- ============================================================
+
+${installs}`);
+  if (left.tz || right.tz)
+    pieces.push(`-- Compare instants on a common clock: ClickHouse emits UTC-adjusted
+-- timestamps while others may be timezone-naive.
+SET TimeZone = 'UTC';`);
+  if (left.needsAws || right.needsAws)
+    pieces.push(`-- S3 credentials from the standard AWS chain (env vars, ~/.aws
+-- profile/SSO, or an IAM role) — nothing inlined.
+CREATE SECRET aws_chain (TYPE s3, PROVIDER credential_chain);`);
+  if (left.setup) pieces.push(`-- ---- left: ${L.label} ----\n${left.setup}`);
+  if (right.setup) pieces.push(`-- ---- right: ${R.label} ----\n${right.setup}`);
+
+  const lq = left.from.includes('\n') ? left.from : left.from;
+  pieces.push(`-- ------------------------------------------------------------
+-- 1) SCHEMA DIFF — do the column names & types line up?
+--    Reads no rows. status: identical · type_differs ·
+--    left_only · right_only
+-- ------------------------------------------------------------
+FROM schema_diff(
+    $$ ${lq} $$,
+    $$ ${right.from} $$
+);
+
+-- ------------------------------------------------------------
+-- 2) DATA DIFF, health check — one row of counts + percentages.
+--    In sync ⇔ everything lands in n_identical.
+-- ------------------------------------------------------------
+FROM table_diff_summary(
+    $$ ${lq} $$,
+    $$ ${right.from} $$,
+    ${optClean}
+);
+
+-- ------------------------------------------------------------
+-- 3) DATA DIFF, drill-down — one row per drifted key.
+--    diff_data is JSON of just the changed columns
+--    ({"col": {"left": …, "right": …}}), and every compared
+--    column also expands to <c>_left / <c>_right / <c>_diff_status.
+-- ------------------------------------------------------------
+FROM table_diff(
+    $$ ${lq} $$,
+    $$ ${right.from} $$,
+    ${optClean}
+)
+WHERE diff_status <> 'identical'
+ORDER BY ${pks.join(', ')}
+LIMIT 500;`);
+
+  $('sqlOut').textContent = pieces.join('\n\n');
+
+  // notes
+  const notes = [...left.notes, ...right.notes.filter(n => !left.notes.includes(n))];
+  notes.push('Remote sources are scanned more than once per diff — for big tables, materialize each side ' +
+    'first (CREATE TABLE l AS …) and diff the local copies. See “Performance & caching” in the README.');
+  notes.push('More knobs: columns := […] restricts the compared columns; prefix := … renames the ' +
+    'diff_* meta columns if they’d collide with yours.');
+  $('noteList').innerHTML = notes.map(n => `<li>${n}</li>`).join('');
+}
+
+/* ---------- wiring ---------- */
+function onSysChange(sel, objInput, labelEl) {
+  const s = byId(sel.value);
+  labelEl.textContent = s.objLabel;
+  objInput.value = s.objDefault;
+  objInput.placeholder = s.objDefault;
+  if (sel === srcSys && s.pkDefault) $('pk').value = s.pkDefault;
+  autoUpcast(); generate();
+}
+function autoUpcast() {
+  $('optUpcast').checked = srcSys.value !== dstSys.value;
+}
+srcSys.onchange = () => onSysChange(srcSys, srcObj, $('srcObjLabel'));
+dstSys.onchange = () => onSysChange(dstSys, dstObj, $('dstObjLabel'));
+for (const id of ['srcObj', 'dstObj', 'pk', 'ignore', 'tolVal'])
+  $(id).oninput = generate;
+for (const id of ['optUpcast', 'optNullEmpty', 'optTol', 'optTs', 'optContext'])
+  $(id).onchange = generate;
+$('tsVal').onchange = generate;
+$('swapBtn').onclick = () => {
+  const s = [srcSys.value, srcObj.value], d = [dstSys.value, dstObj.value];
+  setSide(srcSys, srcObj, $('srcObjLabel'), d[0], d[1]);
+  setSide(dstSys, dstObj, $('dstObjLabel'), s[0], s[1]);
+  autoUpcast(); generate();
+};
+
+document.querySelectorAll('.copy').forEach(btn => {
+  btn.onclick = () => {
+    navigator.clipboard.writeText($(btn.dataset.for).textContent).then(() => {
+      btn.textContent = 'Copied ✓';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
+    });
+  };
+});
+
+/* cards */
+const grid = $('cardGrid');
+for (const c of CARDS) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML = `<span class="pair">${c.pair}</span><h3>${c.title}</h3><p>${c.desc}</p>
+    <div class="actions"><button>Load into builder</button>
+    <a href="https://github.com/avaitla/duck_diff/blob/main/demo/${c.file}" target="_blank" rel="noopener">runnable SQL ↗</a></div>`;
+  el.querySelector('button').onclick = () => {
+    const p = c.preset;
+    setSide(srcSys, srcObj, $('srcObjLabel'), p.src[0], p.src[1]);
+    setSide(dstSys, dstObj, $('dstObjLabel'), p.dst[0], p.dst[1]);
+    $('pk').value = p.pk || 'id';
+    $('ignore').value = p.ignore || '';
+    $('optTol').checked = !!p.tol;
+    $('optTs').checked = !!p.ts;
+    $('optNullEmpty').checked = false;
+    $('optContext').checked = false;
+    autoUpcast(); generate();
+    document.querySelector('.builder').scrollIntoView({ behavior: 'smooth' });
+  };
+  grid.appendChild(el);
+}
+
+/* more connectors */
+$('moreList').innerHTML = MORE.map(n =>
+  `<a class="extchip community" href="https://duckdb.org/community_extensions/extensions/${n}" target="_blank" rel="noopener">${n}</a>`).join('');
+
+/* init: the CDC card is the marquee example */
+setSide(srcSys, srcObj, $('srcObjLabel'), 'postgres', 'public.customers');
+setSide(dstSys, dstObj, $('dstObjLabel'), 'clickhouse', 'appdb.customers FINAL WHERE _peerdb_is_deleted = 0');
+$('optTs').checked = true;
+autoUpcast();
+generate();
+</script>
+</body>
+</html>
