@@ -109,7 +109,11 @@ and signature verification: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
   it can iterate on transformations safely instead of guessing. Because the
   check is mechanical (`n_total = n_identical`, true or false), Claude can run
   these loops **autonomously** — it validates its own correctness at every
-  step instead of arguing for it. See
+  step instead of arguing for it. This pairs naturally with Claude Code's
+  [`/goal`](https://code.claude.com/docs/en/goal): phrase the goal around the
+  printed diff verdict (*"…and the acceptance query returned `true` for every
+  section"*) and Claude keeps working across turns until the condition
+  verifiably holds — the evaluator checks a query result, not a claim. See
   [docs/ai-assisted-migration.md](docs/ai-assisted-migration.md) (includes a
   copy-paste prompt) and the bundled skills in
   [.claude/skills/](.claude/skills/): `sql-migrate` (dialect conversion),
