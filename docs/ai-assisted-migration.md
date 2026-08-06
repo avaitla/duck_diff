@@ -55,6 +55,27 @@ so the agent can iterate against ground truth instead of guessing.
 
 6. Repeat 3–5 until every section is accepted.
 
+## Why this works so well for autonomous agents
+
+The scarce resource in agentic work isn't generation — it's **verification**.
+An agent editing SQL normally has to argue its change is correct; with
+duck_diff the argument is replaced by a check the agent runs itself:
+`n_total = n_identical` is true or it isn't. That property is what makes it
+safe to let Claude run long loops unattended:
+
+- **Self-validation** — every step ends in a machine verdict, so the agent
+  catches its own mistakes immediately instead of compounding them.
+- **No rationalization** — "looks equivalent to me" is not an available
+  move; the acceptance query cannot be talked around.
+- **Tight feedback** — failures come with data (which columns, which rows),
+  so the next attempt is informed, not a re-roll.
+
+The same gate powers three autonomous loops, shipped as skills in
+[`.claude/skills/`](../.claude/skills/): **sql-migrate** (dialect
+conversion, below), **sql-optimize** (make it faster, prove the answer
+didn't change), and **etl-check** (is the copy in sync — and repair only
+the drift).
+
 ## Giving this to Claude: the `sql-migrate` skill
 
 This repo packages the whole workflow as a Claude Code **skill** at

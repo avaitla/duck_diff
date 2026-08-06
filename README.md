@@ -106,11 +106,15 @@ and signature verification: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
   not-yet-synced inserts.
 - **Safe AI-assisted changes** — give a coding agent like Claude a ground-truth
   check that a refactor or data-modeling change produced identical results, so
-  it can iterate on transformations safely instead of guessing. For converting
-  SQL between dialects with the diff as the agent's acceptance loop — one
-  section at a time, don't stop until it's clean — see
-  [docs/ai-assisted-migration.md](docs/ai-assisted-migration.md), including a
-  copy-paste prompt.
+  it can iterate on transformations safely instead of guessing. Because the
+  check is mechanical (`n_total = n_identical`, true or false), Claude can run
+  these loops **autonomously** — it validates its own correctness at every
+  step instead of arguing for it. See
+  [docs/ai-assisted-migration.md](docs/ai-assisted-migration.md) (includes a
+  copy-paste prompt) and the bundled skills in
+  [.claude/skills/](.claude/skills/): `sql-migrate` (dialect conversion),
+  `sql-optimize` (speed it up, prove the answer didn't change), and
+  `etl-check` (sync audits).
 - **Regression tests in CI** — assert in a test suite that a model's output
   still matches its golden snapshot, failing the build when it drifts. See
   [examples/](examples/) for a copy-paste demonstration of writing your own

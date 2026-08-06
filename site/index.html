@@ -7,30 +7,40 @@
 <meta name="description" content="Generate copy-paste DuckDB SQL that diffs a source and destination table across Postgres, MySQL, ClickHouse, BigQuery, Snowflake, Iceberg, MongoDB, Parquet and more.">
 <style>
   :root {
-    --bg: #ffffff; --fg: #1a1a1a; --muted: #666; --line: #d8d8d8;
-    --panel: #f7f7f7; --code-bg: #0f1419; --code-fg: #e6e1cf;
-    --accent: #b8860b; --chip-core: #d1e7dd; --chip-comm: #cfe2ff;
-    --card: #fff; --shadow: rgba(0,0,0,.06);
+    --bg: #fdf9ee; --fg: #33291a; --muted: #7a6a4f; --line: #e3d7bb;
+    --panel: #f7efd9; --code-bg: #1d1809; --code-fg: #e8e1cf;
+    --accent: #c78d00; --accent-bright: #f5c518; --pond: #cfe8ea;
+    --chip-core: #e2ecc9; --chip-comm: #d3e5ea;
+    --card: #fffdf6; --shadow: rgba(120, 90, 20, .1);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #111417; --fg: #e8e6e3; --muted: #9aa0a6; --line: #33383d;
-      --panel: #191d21; --code-bg: #0b0e11; --code-fg: #dcd7c9;
-      --chip-core: #1e4634; --chip-comm: #1e3a5f;
-      --card: #171b1f; --shadow: rgba(0,0,0,.4);
+      --bg: #161309; --fg: #ece4d2; --muted: #a4977c; --line: #3c3520;
+      --panel: #1f1a0d; --code-bg: #100d05; --code-fg: #e0d8c4;
+      --accent: #f5c518; --accent-bright: #f5c518; --pond: #17313a;
+      --chip-core: #2c3d1c; --chip-comm: #1d3a44;
+      --card: #1c170b; --shadow: rgba(0,0,0,.45);
     }
   }
   * { box-sizing: border-box; }
+  ::selection { background: var(--accent-bright); color: #33291a; }
   body { font: 15px/1.55 system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--fg); }
   .wrap { max-width: 72rem; margin: 0 auto; padding: 0 1.25rem 4rem; }
-  header.hero { padding: 3rem 0 1.5rem; border-bottom: 1px solid var(--line); }
-  h1 { font-size: 2rem; margin: 0 0 .4rem; }
-  h1 .duck { font-size: 1.6rem; }
-  .tagline { color: var(--muted); max-width: 46rem; margin: 0 0 1rem; }
+  header.hero { padding: 3rem 0 0; }
+  h1, h2, h3 { font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif; }
+  h1 { font-size: 2.6rem; margin: 0 0 .4rem; letter-spacing: -.02em; }
+  h1 .duck { display: inline-block; font-size: 2.2rem; animation: bob 3.2s ease-in-out infinite; cursor: default; }
+  h1 .duck:hover { animation: waggle .5s ease-in-out; }
+  @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
+  @keyframes waggle { 25% { transform: rotate(-12deg) } 75% { transform: rotate(12deg) } }
+  @media (prefers-reduced-motion: reduce) { h1 .duck { animation: none; } }
+  .tagline { color: var(--muted); max-width: 46rem; margin: 0 0 1rem; font-size: 1.05rem; }
   .hero-links a { margin-right: 1.1rem; color: var(--accent); text-decoration: none; font-weight: 600; }
   .hero-links a:hover { text-decoration: underline; }
-  h2 { font-size: 1.35rem; margin: 2.6rem 0 .4rem; }
-  h3 { font-size: 1.05rem; margin: 1.4rem 0 .4rem; }
+  .wave { display: block; width: 100%; height: 34px; margin: 1.6rem 0 0; color: var(--pond); }
+  h2 { font-size: 1.55rem; margin: 3rem 0 .4rem; }
+  h2 .hsub { font-family: system-ui, sans-serif; font-size: .95rem; font-weight: 400; color: var(--muted); margin-left: .5rem; }
+  h3 { font-size: 1.1rem; margin: 1.4rem 0 .4rem; }
   .sub { color: var(--muted); margin: 0 0 1.2rem; max-width: 52rem; }
   a { color: var(--accent); }
 
@@ -41,13 +51,20 @@
   @media (max-width: 720px) { .sides { grid-template-columns: 1fr; } .swap { transform: rotate(90deg); justify-self: center; } }
   .side { display: flex; flex-direction: column; gap: .5rem; }
   .side label, .opts label { font-size: .8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  select, input[type=text], input[type=number] {
+  select, textarea, input[type=text], input[type=number] {
     width: 100%; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 6px;
     background: var(--bg); color: var(--fg); font: inherit;
   }
-  .swap { align-self: center; margin-top: 1.6rem; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
-          border-radius: 999px; width: 2.4rem; height: 2.4rem; cursor: pointer; font-size: 1.05rem; }
-  .swap:hover { border-color: var(--accent); }
+  textarea { font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; min-height: 2.4rem; }
+  .objhead { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; flex-wrap: wrap; }
+  .modes { display: flex; gap: .8rem; font-size: .8rem; color: var(--muted); }
+  .modes label { display: flex; align-items: center; gap: .25rem; cursor: pointer; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  details.adv { margin-top: 1.1rem; border-top: 1px dashed var(--line); padding-top: .8rem; }
+  details.adv > summary { cursor: pointer; font-weight: 600; color: var(--muted); user-select: none; }
+  details.adv > summary:hover { color: var(--accent); }
+  .swap { align-self: center; margin-top: 1.6rem; border: 2px solid var(--accent-bright); background: var(--bg); color: var(--fg);
+          border-radius: 999px; width: 2.6rem; height: 2.6rem; cursor: pointer; font-size: 1.05rem; transition: transform .25s; }
+  .swap:hover { transform: rotate(180deg); background: var(--accent-bright); color: #33291a; }
   .opts { margin-top: 1.1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .8rem 1.4rem; }
   .opt { display: flex; flex-direction: column; gap: .3rem; }
   .opt .row { display: flex; align-items: center; gap: .5rem; }
@@ -71,13 +88,22 @@
   .copy { position: absolute; top: .6rem; right: .6rem; border: 1px solid #444; background: #1c2128; color: #ddd;
           border-radius: 6px; padding: .25rem .7rem; font-size: .78rem; cursor: pointer; }
   .copy:hover { border-color: var(--accent); }
+  /* syntax tokens (code blocks keep a dark bg in both themes) */
+  .tok-c { color: #5c6773; font-style: italic; }
+  .tok-s { color: #aad94c; }
+  .tok-k { color: #ff8f40; font-weight: 600; }
+  .tok-n { color: #d2a6ff; }
+  .tok-f { color: #59c2ff; }
+  .tok-v { color: #ffee99; }
   .notes { margin: .8rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: .9rem; }
   .notes li { margin: .25rem 0; }
   .notes code, .sub code, .checkline code, td code { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 .25rem; font-size: .85em; }
 
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: 1rem; margin-top: 1rem; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.1rem;
-          box-shadow: 0 1px 3px var(--shadow); display: flex; flex-direction: column; gap: .5rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--accent-bright);
+          border-radius: 10px; padding: 1rem 1.1rem; box-shadow: 0 1px 3px var(--shadow);
+          display: flex; flex-direction: column; gap: .5rem; transition: transform .15s, box-shadow .15s; }
+  .card:hover { transform: translateY(-3px); box-shadow: 0 6px 14px var(--shadow); }
   .card h3 { margin: 0; font-size: 1rem; }
   .card .pair { font-size: .8rem; color: var(--accent); font-weight: 700; letter-spacing: .02em; }
   .card p { margin: 0; color: var(--muted); font-size: .88rem; flex: 1; }
@@ -95,10 +121,11 @@
 
 <header class="hero">
   <h1><span class="duck">🦆</span> duck_diff</h1>
-  <p class="tagline">A DuckDB extension that diffs two relations off a primary key — per row, per column —
-  across <em>any</em> pair of systems DuckDB can reach: Postgres, MySQL, ClickHouse, BigQuery, Snowflake,
-  Iceberg, Delta, MongoDB, plain Parquet files, and more. Pick a source and destination below and copy the
-  generated SQL — it runs locally in the <code>duckdb</code> CLI; your data never leaves your machine.</p>
+  <p class="tagline">Two tables, maybe two entirely different databases, one question: <em>are these
+  actually the same rows?</em> duck_diff is a DuckDB extension that answers per key and per column —
+  across any pair of systems DuckDB can reach: Postgres, MySQL, ClickHouse, BigQuery, Snowflake, Iceberg,
+  Delta, MongoDB, plain Parquet files, and more. Everything below runs locally in the
+  <code>duckdb</code> CLI; your data never leaves your pond.</p>
   <p class="hero-links">
     <a href="https://github.com/avaitla/duck_diff">GitHub</a>
     <a href="https://duckdb.org/community_extensions/extensions/duck_diff">Community extension</a>
@@ -108,10 +135,27 @@
   <div class="install">$ duckdb
 INSTALL duck_diff FROM community;   -- one time
 LOAD duck_diff;</div>
+  <svg class="wave" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true"><path fill="currentColor" d="M0 25 Q 75 5 150 25 T 300 25 T 450 25 T 600 25 T 750 25 T 900 25 T 1050 25 T 1200 25 V 40 H 0 Z"/></svg>
 </header>
 
-<h2>Build a cross-database diff</h2>
-<p class="sub">Choose the two systems and what to compare on each side. The recipe always has three steps:
+<h2>1 · Spot the odd duck <span class="hsub">diff two tables in one line</span></h2>
+<p class="sub">Every row gets a verdict — <code>identical</code>, <code>different</code>,
+<code>left_only</code>, <code>right_only</code> — plus a JSON summary of exactly which columns
+changed, and typed <code>&lt;col&gt;_left</code> / <code>&lt;col&gt;_right</code> columns you can
+filter on. Paste this into any <code>duckdb</code> shell:</p>
+<div class="codeblock"><button class="copy" data-for="quickOut">Copy</button><pre id="quickOut"></pre></div>
+<pre class="install" style="margin-top:.6rem">┌────┬─────────────┬──────────────────────────────────────┐
+│ id │ diff_status │              diff_data               │
+├────┼─────────────┼──────────────────────────────────────┤
+│ 1  │ different   │ {"credits":{"left":100,"right":120}} │
+│ 2  │ identical   │ NULL                                 │
+│ 3  │ left_only   │ NULL                                 │
+│ 4  │ right_only  │ NULL                                 │
+└────┴─────────────┴──────────────────────────────────────┘</pre>
+
+<h2>2 · Get your ducks in a row <span class="hsub">verify CDC pipes, replicas, and migrations are in sync</span></h2>
+<p class="sub">The relation arguments are just query strings, so each side can live in a different
+system. Choose source and destination and copy the recipe. It always has three parts:
 a <strong>schema diff</strong> (do the columns and types even line up?), a <strong>summary</strong>
 (one row of counts — in sync means everything is <code>n_identical</code>), and a
 <strong>drill-down</strong> (every drifted key and exactly which columns changed).
@@ -122,15 +166,23 @@ Credentials come from environment variables — nothing sensitive lands in the S
     <div class="side">
       <label>Source (left)</label>
       <select id="srcSys"></select>
-      <label id="srcObjLabel">Table</label>
-      <input type="text" id="srcObj" spellcheck="false">
+      <div class="objhead"><label id="srcObjLabel">Table</label>
+        <span class="modes">
+          <label><input type="radio" name="srcMode" value="table" checked> table / path</label>
+          <label><input type="radio" name="srcMode" value="query"> SQL query</label>
+        </span></div>
+      <textarea id="srcObj" rows="2" spellcheck="false"></textarea>
     </div>
     <button class="swap" id="swapBtn" title="Swap source and destination">⇄</button>
     <div class="side">
       <label>Destination (right)</label>
       <select id="dstSys"></select>
-      <label id="dstObjLabel">Table</label>
-      <input type="text" id="dstObj" spellcheck="false">
+      <div class="objhead"><label id="dstObjLabel">Table</label>
+        <span class="modes">
+          <label><input type="radio" name="dstMode" value="table" checked> table / path</label>
+          <label><input type="radio" name="dstMode" value="query"> SQL query</label>
+        </span></div>
+      <textarea id="dstObj" rows="2" spellcheck="false"></textarea>
     </div>
   </div>
 
@@ -140,6 +192,11 @@ Credentials come from environment variables — nothing sensitive lands in the S
       <input type="text" id="pk" value="id" spellcheck="false" placeholder="id  —  or: customer_id, order_month">
       <small>Comma-separate for a composite key.</small>
     </div>
+  </div>
+
+  <details class="adv">
+  <summary>Advanced options — type promotion, tolerances, ignored columns</summary>
+  <div class="opts">
     <div class="opt">
       <label>Ignore columns (optional)</label>
       <input type="text" id="ignore" spellcheck="false" placeholder="updated_at, synced_at">
@@ -166,42 +223,52 @@ Credentials come from environment variables — nothing sensitive lands in the S
         <span><b>Full-row context</b> (<code>context := ['*']</code>)<small>Also expand every non-compared column as <code>&lt;c&gt;_left</code>/<code>&lt;c&gt;_right</code>, so <code>left_only</code>/<code>right_only</code> rows arrive with their whole row visible.</small></span></div>
     </div>
   </div>
+  </details>
 
   <div class="exts" id="extRow"></div>
 
-  <h3 style="margin-top:1.2rem">1 · Export credentials <span style="color:var(--muted);font-weight:400">(placeholders — swap in real values, or use a secret-manager wrapper like <code>op run</code> / <code>doppler run</code>)</span></h3>
+  <h3 style="margin-top:1.2rem">Export credentials &amp; launch <span style="color:var(--muted);font-weight:400">(placeholders — swap in real values, or use a secret-manager wrapper like <code>op run</code> / <code>doppler run</code>)</span></h3>
   <div class="codeblock"><button class="copy" data-for="envOut">Copy</button><pre id="envOut"></pre></div>
 
-  <h3>2 · Run the SQL in <code>duckdb</code></h3>
+  <h3>Run the SQL in <code>duckdb</code></h3>
   <div class="codeblock"><button class="copy" data-for="sqlOut">Copy</button><pre id="sqlOut"></pre></div>
 
   <ul class="notes" id="noteList"></ul>
 </div>
 
-<h2>Example playbook</h2>
+<h3>Playbook — load a ready-made scenario</h3>
 <p class="sub">Seven scenarios from the repo's <a href="https://github.com/avaitla/duck_diff/tree/main/demo">demo suite</a> —
 each card loads the matching recipe into the builder above, and links to a fully runnable version
 (env-var secrets, HTML reports, and a docker-compose playground with intentionally drifted data).</p>
 <div class="cards" id="cardGrid"></div>
 
-<h2>More sources</h2>
-<p class="sub">Both relation arguments are just query strings, so <em>any</em> extension that exposes a table
-or query function can feed <code>table_diff</code>. Other community connectors you can point it at:</p>
-<div class="morelist" id="moreList"></div>
+<h2>3 · Same query, new pond <span class="hsub">transpile SQL between dialects, with Claude in the loop</span></h2>
+<p class="sub">LLMs translate SQL dialects well but can't tell when they got it right — the diff can.
+This prompt is wired to the source and destination you picked above: copy it into
+<a href="https://claude.com/claude-code">Claude Code</a> and it converts one section at a time,
+using the diff as a mechanical acceptance test it cannot rationalize around, and doesn't stop until
+the diff is clean. Expand it with your own schema and context — or use the repo's
+<a href="https://github.com/avaitla/duck_diff/blob/main/.claude/skills/sql-migrate/SKILL.md"><code>sql-migrate</code> skill</a>,
+which any Claude Code session in the repo picks up automatically.</p>
+<div class="codeblock"><button class="copy" data-for="promptOut">Copy</button><pre id="promptOut"></pre></div>
 
-<h2>Diffing non-relational sources</h2>
-<p class="sub">MongoDB (and Elasticsearch, and friends) aren't tables — but the connectors flatten them into
-tables via schema inference, and duck_diff takes it from there. The recipe: project a <em>stable field list</em>
-in the relation query (<code>SELECT _id, email, plan FROM mongo_db.appdb.users</code>) and diff on
-<code>pk&nbsp;:=&nbsp;'_id'</code>. Fields missing from a document simply read as NULL — comparison is NULL-safe,
-so NULL equals NULL. Nested sub-documents surface as STRUCT/JSON columns: compare specific extracted paths, or
-serialize with <code>to_json(…)</code> for a whole-subtree equality check. And because documents in one collection
-can disagree about their own shape, run the <code>schema_diff</code> step first — it shows exactly what tabular
-schema was inferred on each side before any rows are read.</p>
+<h2>4 · Fly faster, land the same <span class="hsub">optimize a query without changing its answer</span></h2>
+<p class="sub">The same acceptance loop turns performance tuning into a safe search: rewrite → time it →
+diff it → <strong>keep the rewrite only if it's faster AND the diff says identical</strong> → repeat.
+A real example on a public dataset (231k US flights, vega-datasets CSV) — the quadratic self-join takes
+<strong>17.0&nbsp;s</strong>, the window-function rewrite <strong>0.01&nbsp;s</strong> (~1700×), and the
+diff proves all 177 result rows are byte-identical:</p>
+<div class="codeblock"><button class="copy" data-for="optOut">Copy</button><pre id="optOut"></pre></div>
+<p class="sub" style="margin-top:.8rem">The repo's
+<a href="https://github.com/avaitla/duck_diff/blob/main/.claude/skills/sql-optimize/SKILL.md"><code>sql-optimize</code> skill</a>
+runs this loop autonomously: one rewrite hypothesis at a time, timing as the fitness function, the diff as
+the correctness gate — because the check is mechanical, Claude can verify its own work at every step.</p>
 
+<svg class="wave" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true" style="margin-top:3rem"><path fill="currentColor" d="M0 25 Q 75 5 150 25 T 300 25 T 450 25 T 600 25 T 750 25 T 900 25 T 1050 25 T 1200 25 V 40 H 0 Z"/></svg>
 <footer>
   <p>duck_diff is MIT-licensed. Diffs run entirely in your local DuckDB process — this page only generates SQL, it connects to nothing.
-  <a href="https://github.com/avaitla/duck_diff">Source & docs on GitHub</a> ·
+  Calm on the surface, comparing furiously underneath. 🦆
+  <br><a href="https://github.com/avaitla/duck_diff">Source & docs on GitHub</a> ·
   <a href="https://duckdb.org/community_extensions/extensions/duck_diff">duck_diff on the DuckDB community extension repo</a></p>
 </footer>
 
@@ -320,6 +387,9 @@ ATTACH 'host=127.0.0.1 port=9042 keyspace=appdb' AS cs_${side} (TYPE cassandra);
 { group: 'Warehouses & analytics', items: [
 
 { id: 'bigquery', label: 'BigQuery', objLabel: 'dataset.table', objDefault: 'analytics.orders',
+  qlabel: 'SQL query (BigQuery dialect — pushed down)',
+  qph: () => "SELECT id, customer_id, total_cents FROM analytics.orders WHERE created_at >= TIMESTAMP '2026-01-01'",
+  q: (side, sfx, qq) => `FROM bigquery_query(getenv('BQ_PROJECT${sfx}'), '${qq.replace(/'/g, "''")}')`,
   build: (side, sfx, obj) => ({
     exts: [COMM('bigquery')],
     env: [`export BQ_PROJECT${sfx}=my-gcp-project`,
@@ -331,6 +401,9 @@ ATTACH 'host=127.0.0.1 port=9042 keyspace=appdb' AS cs_${side} (TYPE cassandra);
     notes: [] }) },
 
 { id: 'snowflake', label: 'Snowflake', objLabel: 'schema.table', objDefault: 'marts.orders',
+  qlabel: 'SQL query (Snowflake dialect — pushed down)',
+  qph: () => 'SELECT customer_id, order_month, revenue FROM marts.monthly_revenue WHERE order_month >= \'2026-01\'',
+  q: (side, sfx, qq) => `FROM snowflake_query('${qq.replace(/'/g, "''")}', 'snow_${side}')`,
   build: (side, sfx, obj) => ({
     exts: [COMM('snowflake')],
     env: [`export SNOWFLAKE_ACCOUNT${sfx}=xy12345.us-east-1`, `export SNOWFLAKE_USER${sfx}=reader`,
@@ -347,7 +420,10 @@ ATTACH 'host=127.0.0.1 port=9042 keyspace=appdb' AS cs_${side} (TYPE cassandra);
     from: `FROM snowflake_query('SELECT * FROM ${obj}', 'snow_${side}')`,
     notes: [] }) },
 
-{ id: 'clickhouse', label: 'ClickHouse', objLabel: 'db.table (ClickHouse SQL allowed)', objDefault: 'appdb.customers',
+{ id: 'clickhouse', label: 'ClickHouse', objLabel: 'db.table', objDefault: 'appdb.customers',
+  qlabel: 'SQL query (ClickHouse dialect — pushed down)',
+  qph: () => 'SELECT id, email, plan FROM appdb.customers FINAL WHERE _peerdb_is_deleted = 0',
+  q: (side, sfx, qq) => `FROM clickhouse_query_${side}('${qq.replace(/'/g, "''")}')`,
   build: (side, sfx, obj) => ({
     exts: [CORE('httpfs', 'httpfs/overview')],
     env: [`export CLICKHOUSE_URL${sfx}=https://instance.clickhouse.cloud:8443`,
@@ -506,9 +582,42 @@ ATTACH 'ducklake:lake_cfg_${side}' AS lake_${side} (READ_ONLY);`,
 const ALL = SYSTEMS.flatMap(g => g.items);
 const byId = id => ALL.find(s => s.id === id);
 
-/* ---------- more community connectors (links only) ---------- */
-const MORE = ['salesforce', 'redis', 'splunk', 'prometheus', 'datadog', 'loki', 'hdfs', 'onelake',
-  'paimon', 'gdrive', 'airport', 'nanodbc', 'adbc_scanner', 'duckdb_delta_sharing', 'firebird', 'hive_metastore'];
+const ICONS = {
+  postgres: '🐘', mysql: '🐬', mssql: '🗄️', sqlite: '🪶', duckdb: '🦆', motherduck: '☁️',
+  mongo: '🍃', cassandra: '💠', bigquery: '📊', snowflake: '❄️', clickhouse: '⚡',
+  elasticsearch: '🔎', iceberg: '🧊', s3tables: '🪣', delta: '🔺', ducklake: '🌊',
+  parquet: '🧱', csv: '📄', json: '🧾', excel: '📗', avro: '📦', azure: '🔷', gcs: '🌐', gsheets: '📋',
+};
+const iconOf = id => ICONS[id] || '·';
+
+/* ---------- syntax highlighting (tiny single-pass tokenizers) ---------- */
+const escHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const SQL_FUNCS = 'getenv|read_parquet|read_csv|read_json|read_xlsx|read_avro|read_gsheet|iceberg_scan|' +
+  'delta_scan|bigquery_query|snowflake_query|elasticsearch_query|clickhouse_query_src|clickhouse_query_dst|' +
+  'table_diff_summary|table_diff|schema_diff|url_encode|concat|unnest|json_keys|count';
+function hlSQL(text) {
+  const re = new RegExp(
+    '(--[^\\n]*)|(\\$\\$)|(\'(?:[^\']|\'\')*\')|\\b(' + SQL_FUNCS + ')\\b|\\b([A-Z][A-Z_0-9]{1,})\\b|\\b(\\d+(?:\\.\\d+)?)\\b', 'g');
+  let out = '', last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    out += escHtml(text.slice(last, m.index));
+    const cls = m[1] ? 'tok-c' : m[2] ? 'tok-s' : m[3] ? 'tok-s' : m[4] ? 'tok-f' : m[5] ? 'tok-k' : 'tok-n';
+    out += '<span class="' + cls + '">' + escHtml(m[0]) + '</span>';
+    last = re.lastIndex;
+  }
+  return out + escHtml(text.slice(last));
+}
+function hlShell(text) {
+  return text.split('\n').map(line => {
+    if (line.startsWith('#')) return '<span class="tok-c">' + escHtml(line) + '</span>';
+    let m = line.match(/^(export )([A-Za-z_][A-Za-z0-9_]*)(=)(.*)$/);
+    if (m) return '<span class="tok-k">' + m[1] + '</span><span class="tok-v">' + escHtml(m[2]) +
+                  '</span>=' + '<span class="tok-s">' + escHtml(m[4]) + '</span>';
+    m = line.match(/^(duckdb)(\s*#.*)?$/);
+    if (m) return '<span class="tok-f">duckdb</span>' + (m[2] ? '<span class="tok-c">' + escHtml(m[2]) + '</span>' : '');
+    return escHtml(line);
+  }).join('\n');
+}
 
 /* ---------- demo cards ---------- */
 const CARDS = [
@@ -548,16 +657,39 @@ for (const sel of [srcSys, dstSys]) {
     og.label = g.group;
     for (const s of g.items) {
       const o = document.createElement('option');
-      o.value = s.id; o.textContent = s.label;
+      o.value = s.id; o.textContent = iconOf(s.id) + '  ' + s.label;
       og.appendChild(o);
     }
     sel.appendChild(og);
   }
 }
 
+function modeOf(name) { return document.querySelector('input[name=' + name + 'Mode]:checked').value; }
+function setMode(name, value) { document.querySelector('input[name=' + name + 'Mode][value=' + value + ']').checked = true; }
+function queryLabel(s) { return s.qlabel || 'SQL query (DuckDB dialect, over the attached/scanned source)'; }
+function queryPlaceholder(s, side) {
+  return s.qph ? s.qph(side)
+    : 'SELECT * ' + s.build(side, '', s.objDefault).from.replace(/\n\s*/g, ' ') + ' WHERE …';
+}
+function applyMode(name) {
+  const sel = name === 'src' ? srcSys : dstSys;
+  const objInput = name === 'src' ? srcObj : dstObj;
+  const labelEl = $(name + 'ObjLabel');
+  const s = byId(sel.value);
+  if (modeOf(name) === 'table') {
+    labelEl.textContent = s.objLabel;
+    objInput.value = s.objDefault;
+    objInput.placeholder = s.objDefault;
+  } else {
+    labelEl.textContent = queryLabel(s);
+    objInput.value = '';
+    objInput.placeholder = queryPlaceholder(s, name);
+  }
+}
 function setSide(sel, objInput, labelEl, id, obj) {
   sel.value = id;
   const s = byId(id);
+  setMode(sel === srcSys ? 'src' : 'dst', 'table');
   labelEl.textContent = s.objLabel;
   objInput.value = obj !== undefined ? obj : s.objDefault;
   objInput.placeholder = s.objDefault;
@@ -570,10 +702,18 @@ function pkList() {
 function generate() {
   const L = byId(srcSys.value), R = byId(dstSys.value);
   const same = L.id === R.id;
-  const lObj = srcObj.value.trim() || L.objDefault;
-  const rObj = dstObj.value.trim() || R.objDefault;
+  const lMode = modeOf('src'), rMode = modeOf('dst');
+  const lVal = srcObj.value.trim(), rVal = dstObj.value.trim();
+  const lObj = (lMode === 'table' && lVal) ? lVal : L.objDefault;
+  const rObj = (rMode === 'table' && rVal) ? rVal : R.objDefault;
   const left = L.build('src', '', lObj);
   const right = R.build('dst', sfxOf('dst', same), rObj);
+  // In query mode the user's SQL replaces the table reference: pushed down for
+  // bigquery/snowflake/clickhouse, used verbatim (DuckDB dialect) elsewhere.
+  const lFrom = (lMode === 'query' && lVal) ? (L.q ? L.q('src', '', lVal) : lVal) : left.from;
+  const rFrom = (rMode === 'query' && rVal) ? (R.q ? R.q('dst', sfxOf('dst', same), rVal) : rVal) : right.from;
+  const needsAws = left.needsAws || right.needsAws ||
+    (lMode === 'query' && lVal.includes('s3://')) || (rMode === 'query' && rVal.includes('s3://'));
 
   // extensions (deduped), duck_diff always first
   const exts = [DUCK_DIFF_EXT];
@@ -584,14 +724,15 @@ function generate() {
   $('extRow').innerHTML = '<span class="lbl">Extensions used</span>' + exts.map(e =>
     `<a class="extchip ${e.kind}" href="${e.url}" target="_blank" rel="noopener">${e.name} · ${e.kind}</a>`).join('');
 
-  // env block
+  // env block, ending with the CLI launch itself
   const envLines = [...left.env];
   for (const l of right.env) if (!envLines.includes(l)) envLines.push(l);
-  if (left.needsAws || right.needsAws)
+  if (needsAws)
     envLines.push('# S3 access: the standard AWS chain is used automatically',
                   '#   (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION, an AWS_PROFILE, or an IAM role)');
   if (!envLines.length) envLines.push('# no credentials needed for this pair');
-  $('envOut').textContent = envLines.join('\n');
+  envLines.push('', 'duckdb   # launches the CLI — paste the SQL from step 2 at the prompt');
+  $('envOut').innerHTML = hlShell(envLines.join('\n'));
 
   // options — each arg carries an explanatory comment into the generated SQL
   const pks = pkList().length ? pkList() : ['id'];
@@ -631,14 +772,14 @@ ${installs}`);
     pieces.push(`-- Compare instants on a common clock: ClickHouse emits UTC-adjusted
 -- timestamps while others may be timezone-naive.
 SET TimeZone = 'UTC';`);
-  if (left.needsAws || right.needsAws)
+  if (needsAws)
     pieces.push(`-- S3 credentials from the standard AWS chain (env vars, ~/.aws
 -- profile/SSO, or an IAM role) — nothing inlined.
 CREATE SECRET aws_chain (TYPE s3, PROVIDER credential_chain);`);
   if (left.setup) pieces.push(`-- ---- left: ${L.label} ----\n${left.setup}`);
   if (right.setup) pieces.push(`-- ---- right: ${R.label} ----\n${right.setup}`);
 
-  const lq = left.from.includes('\n') ? left.from : left.from;
+  const lq = lFrom;
   pieces.push(`-- ------------------------------------------------------------
 -- 1) SCHEMA DIFF — do the column names & types line up?
 --    Reads no rows. status: identical · type_differs ·
@@ -646,7 +787,7 @@ CREATE SECRET aws_chain (TYPE s3, PROVIDER credential_chain);`);
 -- ------------------------------------------------------------
 FROM schema_diff(
     $$ ${lq} $$,
-    $$ ${right.from} $$
+    $$ ${rFrom} $$
 );
 
 -- ------------------------------------------------------------
@@ -655,7 +796,7 @@ FROM schema_diff(
 -- ------------------------------------------------------------
 FROM table_diff_summary(
     $$ ${lq} $$,
-    $$ ${right.from} $$,
+    $$ ${rFrom} $$,
     ${optClean}
 );
 
@@ -667,14 +808,49 @@ FROM table_diff_summary(
 -- ------------------------------------------------------------
 FROM table_diff(
     $$ ${lq} $$,
-    $$ ${right.from} $$,
+    $$ ${rFrom} $$,
     ${optClean}
 )
 WHERE diff_status <> 'identical'
 ORDER BY ${pks.join(', ')}
 LIMIT 500;`);
 
-  $('sqlOut').textContent = pieces.join('\n\n');
+  $('sqlOut').innerHTML = hlSQL(pieces.join('\n\n'));
+
+  // Claude dialect-conversion prompt, wired to the current pair
+  const argsLine = args.map(a => a.sql).join(', ');
+  $('promptOut').textContent =
+`You are converting SQL from the ${L.label} dialect to the ${R.label} dialect.
+
+TASK
+Convert the ${L.label} query below so it produces IDENTICAL rows on ${R.label}:
+
+    <paste your ${L.label} SQL here>
+
+ACCEPTANCE — mechanical, never skipped
+A conversion is DONE only when this returns true in the duckdb CLI
+(INSTALL duck_diff FROM community; LOAD duck_diff; + the connection setup
+from the recipe above):
+
+    SELECT n_total = n_identical AS accepted
+    FROM table_diff_summary(
+        $$ ${lq} $$,
+        $$ ${rFrom} $$,
+        ${argsLine});
+
+RULES
+1. Work one section (CTE / subquery / view) at a time, in dependency order.
+2. Run the acceptance query after every change — never declare success without it.
+3. On failure, diagnose from data, not by re-reading the SQL:
+     FROM schema_diff($$ left $$, $$ right $$) WHERE status <> 'identical';
+     FROM table_diff($$ left $$, $$ right $$, ${argsLine})
+       WHERE diff_status <> 'identical' LIMIT 20;
+4. Do not stop until every section is accepted. If a difference needs a business
+   decision (rounding, timezone, collation), show the drifted rows plus the
+   smallest tolerance that would accept them (numeric_tolerance /
+   timestamp_precision / null_equals_empty), then wait for approval.
+
+Full workflow: https://github.com/avaitla/duck_diff/blob/main/docs/ai-assisted-migration.md`;
 
   // notes
   const notes = [...left.notes, ...right.notes.filter(n => !left.notes.includes(n))];
@@ -687,13 +863,17 @@ LIMIT 500;`);
 
 /* ---------- wiring ---------- */
 function onSysChange(sel, objInput, labelEl) {
+  const name = sel === srcSys ? 'src' : 'dst';
+  setMode(name, 'table');
+  applyMode(name);
   const s = byId(sel.value);
-  labelEl.textContent = s.objLabel;
-  objInput.value = s.objDefault;
-  objInput.placeholder = s.objDefault;
   if (sel === srcSys && s.pkDefault) $('pk').value = s.pkDefault;
   autoUpcast(); generate();
 }
+document.querySelectorAll('input[name=srcMode]').forEach(r =>
+  r.onchange = () => { applyMode('src'); generate(); });
+document.querySelectorAll('input[name=dstMode]').forEach(r =>
+  r.onchange = () => { applyMode('dst'); generate(); });
 function autoUpcast() {
   $('optUpcast').checked = srcSys.value !== dstSys.value;
 }
@@ -725,7 +905,7 @@ const grid = $('cardGrid');
 for (const c of CARDS) {
   const el = document.createElement('div');
   el.className = 'card';
-  el.innerHTML = `<span class="pair">${c.pair}</span><h3>${c.title}</h3><p>${c.desc}</p>
+  el.innerHTML = `<span class="pair">${iconOf(c.preset.src[0])} ${c.pair} ${iconOf(c.preset.dst[0])}</span><h3>${c.title}</h3><p>${c.desc}</p>
     <div class="actions"><button>Load into builder</button>
     <a href="https://github.com/avaitla/duck_diff/blob/main/demo/${c.file}" target="_blank" rel="noopener">runnable SQL ↗</a></div>`;
   el.querySelector('button').onclick = () => {
@@ -744,9 +924,53 @@ for (const c of CARDS) {
   grid.appendChild(el);
 }
 
-/* more connectors */
-$('moreList').innerHTML = MORE.map(n =>
-  `<a class="extchip community" href="https://duckdb.org/community_extensions/extensions/${n}" target="_blank" rel="noopener">${n}</a>`).join('');
+/* static example blocks (sections 1 and 4) */
+$('quickOut').innerHTML = hlSQL(`INSTALL duck_diff FROM community; LOAD duck_diff;
+
+CREATE TABLE users_v1 AS SELECT * FROM (VALUES
+    (1, 'Ada',   'ada@x.com',   100),
+    (2, 'Linus', 'linus@x.com',  50),
+    (3, 'Grace', 'grace@x.com',  75)
+) t(id, name, email, credits);
+
+CREATE TABLE users_v2 AS SELECT * FROM (VALUES
+    (1, 'Ada',   'ada@x.com',   120),   -- credits changed
+    (2, 'Linus', 'linus@x.com',  50),   -- unchanged
+    (4, 'Mike',  'mike@x.com',   10)    -- new (id 3 removed)
+) t(id, name, email, credits);
+
+SELECT id, diff_status, diff_data
+FROM table_diff('FROM users_v1', 'FROM users_v2', pk := 'id') ORDER BY id;`);
+
+$('optOut').innerHTML = hlSQL(`INSTALL duck_diff FROM community; LOAD duck_diff;
+
+-- Public dataset: 231,083 US flights (vega-datasets CSV), one local copy.
+CREATE TABLE flights AS FROM read_csv(
+  'https://raw.githubusercontent.com/vega/vega-datasets/master/data/flights-3m.csv');
+
+.timer on
+
+-- BASELINE (unoptimized): top-3 most-delayed flights per origin airport,
+-- via a quadratic self-join. Freeze its output — this is the golden answer.
+CREATE TABLE golden AS
+SELECT f.origin, f.date, f.destination, f.delay, count(*) AS rnk
+FROM flights f
+JOIN flights g ON g.origin = f.origin
+ AND (g.delay > f.delay OR (g.delay = f.delay
+      AND (g.date, g.destination) <= (f.date, f.destination)))
+GROUP BY ALL HAVING rnk <= 3;                        -- 17.0 s
+
+-- CANDIDATE: the same question, asked as a window function.
+CREATE OR REPLACE TABLE candidate AS
+SELECT origin, date, destination, delay,
+       row_number() OVER (PARTITION BY origin
+                          ORDER BY delay DESC, date, destination) AS rnk
+FROM flights QUALIFY rnk <= 3;                       -- 0.01 s  (~1700x)
+
+-- THE GATE: faster only counts if the answer is identical.
+SELECT n_total = n_identical AS accepted
+FROM table_diff_summary('FROM golden', 'FROM candidate',
+                        pk := ['origin', 'rnk']);    -- true (177 rows)`);
 
 /* init: the CDC card is the marquee example */
 setSide(srcSys, srcObj, $('srcObjLabel'), 'postgres', 'public.customers');

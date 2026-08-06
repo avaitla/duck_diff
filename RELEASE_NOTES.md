@@ -60,8 +60,11 @@ Also included:
   Claude to convert SQL between dialects with `table_diff` as the acceptance
   loop, one section at a time; includes a copy-paste prompt.
 - **Claude Code skills** — `.claude/skills/sql-migrate` (dialect conversion
-  with the diff as the agent's acceptance test) and `.claude/skills/etl-check`
-  (is this replica/CDC/warehouse copy in sync — lag-aware, evidence-first).
+  with the diff as the agent's acceptance test), `.claude/skills/sql-optimize`
+  (iterative performance tuning gated on an identical diff), and
+  `.claude/skills/etl-check` (is this replica/CDC/warehouse copy in sync —
+  lag-aware, evidence-first). The diff makes these loops safe to run
+  autonomously: Claude validates its own correctness at every step.
   Auto-loaded in sessions opened in this repo; copy to `~/.claude/skills/`
   to use everywhere.
 
