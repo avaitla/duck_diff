@@ -47,7 +47,7 @@ stamps the extension version from the tag (`git describe`). So a release is:
 3. **Cut the release** (tag + publish in one step):
    ```sh
    git checkout main && git pull
-   gh release create v0.2.0 --target main --title "duck_diff v0.2.0" --notes "see workflow"
+   gh release create v0.2.0 --target main --title "duck_diff v0.2.0" --notes-file RELEASE_NOTES.md
    ```
    (Or GitHub UI → **Releases → Draft a new release** → create tag `v0.2.0` on
    `main` → **Publish**.)

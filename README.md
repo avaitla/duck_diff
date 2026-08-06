@@ -100,9 +100,17 @@ and signature verification: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
 - **Capturing the differences** between snapshots or points in time.
 - **Replication integrity** — spot-check that a replica matches its source, in
   the spirit of `pt-table-checksum`.
+- **CDC pipeline validation** — audit that a change-data-capture copy
+  (ClickPipes/PeerDB, Debezium, Fivetran, …) faithfully tracks its source —
+  say Postgres → ClickHouse — catching stale rows, missed deletes, and
+  not-yet-synced inserts.
 - **Safe AI-assisted changes** — give a coding agent like Claude a ground-truth
   check that a refactor or data-modeling change produced identical results, so
-  it can iterate on transformations safely instead of guessing.
+  it can iterate on transformations safely instead of guessing. For converting
+  SQL between dialects with the diff as the agent's acceptance loop — one
+  section at a time, don't stop until it's clean — see
+  [docs/ai-assisted-migration.md](docs/ai-assisted-migration.md), including a
+  copy-paste prompt.
 - **Regression tests in CI** — assert in a test suite that a model's output
   still matches its golden snapshot, failing the build when it drifts. See
   [examples/](examples/) for a copy-paste demonstration of writing your own
@@ -112,6 +120,11 @@ and signature verification: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
 
 DuckDB is a great fit since it has connectors to many databases and can run 
 locally and within customers VPC/private environment.
+
+Runnable recipes for the cross-database scenarios — Postgres, ClickHouse,
+MySQL, BigQuery, Snowflake, Iceberg, DuckLake, Parquet/S3, including the
+Postgres ↔ ClickHouse CDC audit — live in [demo/](demo/), with a
+docker-compose playground that exercises three of them end-to-end locally.
 
 ## Functions
 
@@ -168,6 +181,13 @@ SELECT * FROM table_diff(
   ignore := ['updated_at', 'updated_by']   -- drop metadata churn from the comparison
 );
 ```
+
+Ready-to-run recipes for this live in [demo/](demo/) — MySQL primary ↔ read
+replica, MySQL ↔ BigQuery, Postgres ↔ Snowflake, ClickHouse ↔ Parquet on S3,
+Iceberg ↔ DuckLake, Postgres ↔ Amazon S3 Tables, and Postgres ↔ ClickHouse
+(a ClickPipes CDC audit) — with every credential
+supplied via environment variables instead of being inlined in the SQL, plus
+a `report.sh` that renders any diff as a shareable HTML page.
 
 ### Performance & caching
 
