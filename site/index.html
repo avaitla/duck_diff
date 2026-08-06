@@ -126,6 +126,10 @@
   across any pair of systems DuckDB can reach: Postgres, MySQL, ClickHouse, BigQuery, Snowflake, Iceberg,
   Delta, MongoDB, plain Parquet files, and more. Everything below runs locally in the
   <code>duckdb</code> CLI; your data never leaves your pond.</p>
+  <p class="tagline">And because the verdict is mechanical — <code>n_total = n_identical</code>, true or
+  false — it's a validation step <strong>Claude can run in loops</strong>: safely refactor a model,
+  optimize a slow query, or transpile SQL to another dialect, <em>checking its own correctness</em>
+  after every change and stopping only when the diff comes back clean.</p>
   <p class="hero-links">
     <a href="https://github.com/avaitla/duck_diff">GitHub</a>
     <a href="https://duckdb.org/community_extensions/extensions/duck_diff">Community extension</a>
