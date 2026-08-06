@@ -38,6 +38,18 @@
   .hero-links a { margin-right: 1.1rem; color: var(--accent); text-decoration: none; font-weight: 600; }
   .hero-links a:hover { text-decoration: underline; }
   .wave { display: block; width: 100%; height: 34px; margin: 1.6rem 0 0; color: var(--pond); }
+  header.hero { position: relative; }
+  .wavefloat { position: absolute; bottom: 14px; left: -6%; font-size: 1.15rem; pointer-events: none;
+               animation: drift 52s linear infinite, bob 3.2s ease-in-out infinite; }
+  @keyframes drift { from { left: -6%; } to { left: 103%; } }
+  @media (prefers-reduced-motion: reduce) { .wavefloat { display: none; } }
+  .quack { position: absolute; font: italic 1rem/1 Georgia, serif; color: var(--accent); pointer-events: none;
+           animation: floatup 1.1s ease-out forwards; }
+  @keyframes floatup { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-2.2rem); } }
+  .gooserow { margin: 1rem 0 0; }
+  .gooserow button { background: none; border: none; font-size: 1.5rem; cursor: pointer; padding: .1rem; border-radius: 6px; }
+  .gooserow button:hover { background: var(--panel); }
+  .gooseverdict { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); margin: .3rem 0 0; min-height: 1.3rem; }
   h2 { font-size: 1.55rem; margin: 3rem 0 .4rem; }
   h2 .hsub { font-family: system-ui, sans-serif; font-size: .95rem; font-weight: 400; color: var(--muted); margin-left: .5rem; }
   h3 { font-size: 1.1rem; margin: 1.4rem 0 .4rem; }
@@ -159,6 +171,7 @@
 INSTALL duck_diff FROM community;   -- one time
 LOAD duck_diff;</div>
   <svg class="wave" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true"><path fill="currentColor" d="M0 25 Q 75 5 150 25 T 300 25 T 450 25 T 600 25 T 750 25 T 900 25 T 1050 25 T 1200 25 V 40 H 0 Z"/></svg>
+  <span class="wavefloat" aria-hidden="true">🦆</span>
 </header>
 
 <div class="layout">
@@ -178,6 +191,8 @@ changed, and typed <code>&lt;col&gt;_left</code> / <code>&lt;col&gt;_right</code
 filter on. Take the whole thing with <code>SELECT *</code>, or project just the slice your use
 case needs. Paste this into any <code>duckdb</code> shell:</p>
 <div class="codeblock"><button class="copy" data-for="quickOut">Copy</button><pre id="quickOut"></pre></div>
+<div class="gooserow" id="gooseRow" title="one of these is not like the others"></div>
+<p class="gooseverdict" id="gooseVerdict">spot the odd duck (click it)</p>
 </details>
 
 <details class="sect" open id="sect2">
@@ -983,11 +998,58 @@ $('swapBtn').onclick = () => {
 document.querySelectorAll('.copy').forEach(btn => {
   btn.onclick = () => {
     navigator.clipboard.writeText($(btn.dataset.for).textContent).then(() => {
-      btn.textContent = 'Copied ✓';
+      btn.textContent = 'Quacked ✓';
       setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
     });
   };
 });
+
+/* the hero duck quacks when clicked */
+const heroDuck = document.querySelector('h1 .duck');
+let quacks = 0;
+heroDuck.onclick = () => {
+  quacks++;
+  const q = document.createElement('span');
+  q.className = 'quack';
+  q.textContent = quacks % 7 === 0 ? 'QUACK.' : 'quack!';
+  q.style.left = (heroDuck.offsetLeft + 30 + Math.random() * 40) + 'px';
+  q.style.top = (heroDuck.offsetTop - 8) + 'px';
+  heroDuck.parentNode.appendChild(q);
+  setTimeout(() => q.remove(), 1200);
+};
+
+/* spot the odd duck: a live left_only/right_only, population 8 */
+(function () {
+  const row = $('gooseRow'), verdict = $('gooseVerdict');
+  const gooseAt = Math.floor(Math.random() * 8);
+  for (let i = 0; i < 8; i++) {
+    const b = document.createElement('button');
+    b.textContent = i === gooseAt ? '🪿' : '🦆';
+    b.setAttribute('aria-label', 'bird ' + (i + 1));
+    b.onclick = () => {
+      verdict.textContent = i === gooseAt
+        ? `pk := ${i + 1} → diff_status = 'right_only' — goose detected. Now imagine doing that by eye across 231,083 rows.`
+        : `pk := ${i + 1} → diff_status = 'identical' — that one's fine. Keep looking.`;
+    };
+    row.appendChild(b);
+  }
+})();
+
+/* rotating footer wisdom */
+const FACTS = [
+  'A group of ducks is called a raft. So is a badly glued-together data stack.',
+  'Ducks sleep with one eye open. So should your replication.',
+  'If it looks like your data and quacks like your data — diff it anyway.',
+  'Ducklings imprint on the first thing they see. Analysts imprint on the first row count that matches.',
+  'Water off a duck’s back; drift off a clean diff.',
+];
+const factEl = document.createElement('p');
+factEl.style.cssText = 'font-style:italic;cursor:pointer';
+factEl.title = 'another one';
+let factIdx = Math.floor(Math.random() * FACTS.length);
+factEl.textContent = '“' + FACTS[factIdx] + '”';
+factEl.onclick = () => { factIdx = (factIdx + 1) % FACTS.length; factEl.textContent = '“' + FACTS[factIdx] + '”'; };
+document.querySelector('footer').prepend(factEl);
 
 /* cards */
 const grid = $('cardGrid');
