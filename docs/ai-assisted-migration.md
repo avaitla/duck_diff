@@ -76,6 +76,28 @@ conversion, below), **sql-optimize** (make it faster, prove the answer
 didn't change), and **etl-check** (is the copy in sync — and repair only
 the drift).
 
+### Pairing with Claude Code's `/goal`
+
+[`/goal`](https://code.claude.com/docs/en/goal) (Claude Code v2.1.139+) keeps
+Claude working across turns until a completion condition verifiably holds —
+exactly the shape of these loops. duck_diff supplies the condition as
+something the goal evaluator can check from the transcript, because Claude
+prints a literal `true`/`false` each round:
+
+```text
+/goal every section of reports/orders_rollup.sql is converted to BigQuery
+dialect and, for each one, the acceptance query
+SELECT n_total = n_identical FROM table_diff_summary(...) has been run and
+returned true in this session — or you hit a tolerance decision that needs me
+```
+
+Works the same for the other loops: "the candidate query is ≥5× faster than
+baseline AND the diff gate returned true", or "the converge script reruns
+until table_diff_summary reports 100% n_identical". Vague goals ("the
+migration is done") make the evaluator guess; goals phrased around the
+printed diff verdict don't. Pair with auto mode for unattended tool calls,
+and add "or stop after N turns" as a bound.
+
 ## Giving this to Claude: the `sql-migrate` skill
 
 This repo packages the whole workflow as a Claude Code **skill** at

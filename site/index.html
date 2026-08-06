@@ -62,6 +62,12 @@
   details.adv { margin-top: 1.1rem; border-top: 1px dashed var(--line); padding-top: .8rem; }
   details.adv > summary { cursor: pointer; font-weight: 600; color: var(--muted); user-select: none; }
   details.adv > summary:hover { color: var(--accent); }
+  details.sect { margin: 2.4rem 0 0; }
+  details.sect > summary { cursor: pointer; user-select: none; }
+  details.sect > summary::marker { color: var(--accent); font-size: 1.1rem; }
+  details.sect > summary h2 { display: inline; margin: 0; }
+  details.sect > summary:hover h2 { color: var(--accent); }
+  details.sect[open] > summary { margin-bottom: .5rem; }
   .swap { align-self: center; margin-top: 1.6rem; border: 2px solid var(--accent-bright); background: var(--bg); color: var(--fg);
           border-radius: 999px; width: 2.6rem; height: 2.6rem; cursor: pointer; font-size: 1.05rem; transition: transform .25s; }
   .swap:hover { transform: rotate(180deg); background: var(--accent-bright); color: #33291a; }
@@ -142,22 +148,44 @@ LOAD duck_diff;</div>
   <svg class="wave" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true"><path fill="currentColor" d="M0 25 Q 75 5 150 25 T 300 25 T 450 25 T 600 25 T 750 25 T 900 25 T 1050 25 T 1200 25 V 40 H 0 Z"/></svg>
 </header>
 
-<h2>1 · Spot the odd duck <span class="hsub">diff two tables in one line</span></h2>
+<details class="sect" open>
+<summary><h2>1 · Spot the odd duck <span class="hsub">diff two tables in one line</span></h2></summary>
 <p class="sub">Every row gets a verdict — <code>identical</code>, <code>different</code>,
 <code>left_only</code>, <code>right_only</code> — plus a JSON summary of exactly which columns
 changed, and typed <code>&lt;col&gt;_left</code> / <code>&lt;col&gt;_right</code> columns you can
-filter on. Paste this into any <code>duckdb</code> shell:</p>
+filter on. Take the whole thing with <code>SELECT *</code>, or project just the slice your use
+case needs. Paste this into any <code>duckdb</code> shell:</p>
 <div class="codeblock"><button class="copy" data-for="quickOut">Copy</button><pre id="quickOut"></pre></div>
-<pre class="install" style="margin-top:.6rem">┌────┬─────────────┬──────────────────────────────────────┐
-│ id │ diff_status │              diff_data               │
-├────┼─────────────┼──────────────────────────────────────┤
-│ 1  │ different   │ {"credits":{"left":100,"right":120}} │
-│ 2  │ identical   │ NULL                                 │
-│ 3  │ left_only   │ NULL                                 │
-│ 4  │ right_only  │ NULL                                 │
-└────┴─────────────┴──────────────────────────────────────┘</pre>
+<p class="sub" style="margin:.9rem 0 .2rem"><code>schema_diff</code> — does the shape even match? (reads no rows)</p>
+<pre class="install">┌─────────────┬───────────┬────────────┬───────────┐
+│ column_name │ left_type │ right_type │  status   │
+├─────────────┼───────────┼────────────┼───────────┤
+│ id          │ INTEGER   │ INTEGER    │ identical │
+│ name        │ VARCHAR   │ VARCHAR    │ identical │
+│ email       │ VARCHAR   │ VARCHAR    │ identical │
+│ credits     │ INTEGER   │ INTEGER    │ identical │
+└─────────────┴───────────┴────────────┴───────────┘</pre>
+<p class="sub" style="margin:.9rem 0 .2rem"><code>SELECT *</code> — the full result: verdict, JSON summary, and every column expanded (scrolls →)</p>
+<pre class="install">┌───────┬─────────────┬──────────────────────────────────────┬───────────┬────────────┬──────────────────┬─────────────┬─────────────┬───────────────────┬──────────────┬───────────────┬─────────────────────┐
+│  id   │ diff_status │              diff_data               │ name_left │ name_right │ name_diff_status │ email_left  │ email_right │ email_diff_status │ credits_left │ credits_right │ credits_diff_status │
+├───────┼─────────────┼──────────────────────────────────────┼───────────┼────────────┼──────────────────┼─────────────┼─────────────┼───────────────────┼──────────────┼───────────────┼─────────────────────┤
+│     1 │ different   │ {"credits":{"left":100,"right":120}} │ Ada       │ Ada        │ identical        │ ada@x.com   │ ada@x.com   │ identical         │          100 │           120 │ different           │
+│     2 │ identical   │ NULL                                 │ Linus     │ Linus      │ identical        │ linus@x.com │ linus@x.com │ identical         │           50 │            50 │ identical           │
+│     3 │ left_only   │ NULL                                 │ Grace     │ NULL       │ left_only        │ grace@x.com │ NULL        │ left_only         │           75 │          NULL │ left_only           │
+│     4 │ right_only  │ NULL                                 │ NULL      │ Mike       │ right_only       │ NULL        │ mike@x.com  │ right_only        │         NULL │            10 │ right_only          │
+└───────┴─────────────┴──────────────────────────────────────┴───────────┴────────────┴──────────────────┴─────────────┴─────────────┴───────────────────┴──────────────┴───────────────┴─────────────────────┘</pre>
+<p class="sub" style="margin:.9rem 0 .2rem">…or just the drift, three columns, ready for a ticket:</p>
+<pre class="install">┌───────┬─────────────┬──────────────────────────────────────┐
+│  id   │ diff_status │              diff_data               │
+├───────┼─────────────┼──────────────────────────────────────┤
+│     1 │ different   │ {"credits":{"left":100,"right":120}} │
+│     3 │ left_only   │ NULL                                 │
+│     4 │ right_only  │ NULL                                 │
+└───────┴─────────────┴──────────────────────────────────────┘</pre>
+</details>
 
-<h2>2 · Get your ducks in a row <span class="hsub">verify CDC pipes, replicas, and migrations are in sync</span></h2>
+<details class="sect" open>
+<summary><h2>2 · Get your ducks in a row <span class="hsub">verify CDC pipes, replicas, and migrations are in sync</span></h2></summary>
 <p class="sub">The relation arguments are just query strings, so each side can live in a different
 system. Choose source and destination and copy the recipe. It always has three parts:
 a <strong>schema diff</strong> (do the columns and types even line up?), a <strong>summary</strong>
@@ -245,8 +273,10 @@ Credentials come from environment variables — nothing sensitive lands in the S
 each card loads the matching recipe into the builder above, and links to a fully runnable version
 (env-var secrets, HTML reports, and a docker-compose playground with intentionally drifted data).</p>
 <div class="cards" id="cardGrid"></div>
+</details>
 
-<h2>3 · Same query, new pond <span class="hsub">transpile SQL between dialects, with Claude in the loop</span></h2>
+<details class="sect" open>
+<summary><h2>3 · Same query, new pond <span class="hsub">transpile SQL between dialects, with Claude in the loop</span></h2></summary>
 <p class="sub">LLMs translate SQL dialects well but can't tell when they got it right — the diff can.
 This prompt is wired to the source and destination you picked above: copy it into
 <a href="https://claude.com/claude-code">Claude Code</a> and it converts one section at a time,
@@ -255,8 +285,10 @@ the diff is clean. Expand it with your own schema and context — or use the rep
 <a href="https://github.com/avaitla/duck_diff/blob/main/.claude/skills/sql-migrate/SKILL.md"><code>sql-migrate</code> skill</a>,
 which any Claude Code session in the repo picks up automatically.</p>
 <div class="codeblock"><button class="copy" data-for="promptOut">Copy</button><pre id="promptOut"></pre></div>
+</details>
 
-<h2>4 · Fly faster, land the same <span class="hsub">optimize a query without changing its answer</span></h2>
+<details class="sect" open>
+<summary><h2>4 · Fly faster, land the same <span class="hsub">optimize a query without changing its answer</span></h2></summary>
 <p class="sub">The same acceptance loop turns performance tuning into a safe search: rewrite → time it →
 diff it → <strong>keep the rewrite only if it's faster AND the diff says identical</strong> → repeat.
 A real example on a public dataset (231k US flights, vega-datasets CSV) — the quadratic self-join takes
@@ -267,6 +299,7 @@ diff proves all 177 result rows are byte-identical:</p>
 <a href="https://github.com/avaitla/duck_diff/blob/main/.claude/skills/sql-optimize/SKILL.md"><code>sql-optimize</code> skill</a>
 runs this loop autonomously: one rewrite hypothesis at a time, timing as the fitness function, the diff as
 the correctness gate — because the check is mechanical, Claude can verify its own work at every step.</p>
+</details>
 
 <svg class="wave" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true" style="margin-top:3rem"><path fill="currentColor" d="M0 25 Q 75 5 150 25 T 300 25 T 450 25 T 600 25 T 750 25 T 900 25 T 1050 25 T 1200 25 V 40 H 0 Z"/></svg>
 <footer>
@@ -943,8 +976,17 @@ CREATE TABLE users_v2 AS SELECT * FROM (VALUES
     (4, 'Mike',  'mike@x.com',   10)    -- new (id 3 removed)
 ) t(id, name, email, credits);
 
+-- 1. schema first: do the columns and types line up?
+FROM schema_diff('FROM users_v1', 'FROM users_v2');
+
+-- 2. the whole diff: verdict + JSON summary + every column
+--    expanded as <col>_left / <col>_right / <col>_diff_status
+SELECT * FROM table_diff('FROM users_v1', 'FROM users_v2', pk := 'id') ORDER BY id;
+
+-- 3. or project just the slice your use case needs
 SELECT id, diff_status, diff_data
-FROM table_diff('FROM users_v1', 'FROM users_v2', pk := 'id') ORDER BY id;`);
+FROM table_diff('FROM users_v1', 'FROM users_v2', pk := 'id')
+WHERE diff_status <> 'identical' ORDER BY id;`);
 
 $('optOut').innerHTML = hlSQL(`INSTALL duck_diff FROM community; LOAD duck_diff;
 
