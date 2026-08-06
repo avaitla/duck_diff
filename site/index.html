@@ -39,10 +39,6 @@
   .hero-links a:hover { text-decoration: underline; }
   .wave { display: block; width: 100%; height: 34px; margin: 1.6rem 0 0; color: var(--pond); }
   header.hero { position: relative; }
-  .wavefloat { position: absolute; bottom: 14px; left: -6%; font-size: 1.15rem; pointer-events: none;
-               animation: drift 52s linear infinite, bob 3.2s ease-in-out infinite; }
-  @keyframes drift { from { left: -6%; } to { left: 103%; } }
-  @media (prefers-reduced-motion: reduce) { .wavefloat { display: none; } }
   .quack { position: absolute; font: italic 1rem/1 Georgia, serif; color: var(--accent); pointer-events: none;
            animation: floatup 1.1s ease-out forwards; }
   @keyframes floatup { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-2.2rem); } }
@@ -171,7 +167,6 @@
 INSTALL duck_diff FROM community;   -- one time
 LOAD duck_diff;</div>
   <svg class="wave" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true"><path fill="currentColor" d="M0 25 Q 75 5 150 25 T 300 25 T 450 25 T 600 25 T 750 25 T 900 25 T 1050 25 T 1200 25 V 40 H 0 Z"/></svg>
-  <span class="wavefloat" aria-hidden="true">🦆</span>
 </header>
 
 <div class="layout">
@@ -917,6 +912,8 @@ LIMIT 500;`);
 
   // Claude dialect-conversion prompt, wired to the current pair
   const argsLine = args.map(a => a.sql).join(', ');
+  const snapEx = L.q ? L.q('src', '', 'SELECT * FROM <source_table>') : lq;
+  const goldEx = L.q ? L.q('src', '', '<the original query>') : lq;
   $('promptOut').textContent =
 `You are converting SQL from the ${L.label} dialect to the ${R.label} dialect.
 
@@ -925,6 +922,14 @@ Convert the ${L.label} query below so it produces IDENTICAL rows on ${R.label}:
 
     <paste your ${L.label} SQL here>
 
+SETUP — extract and freeze the inputs first
+1. List every source table the query reads (FROM / JOIN / CTE inputs).
+2. Snapshot each one into the local DuckDB so nothing drifts mid-conversion:
+     CREATE TABLE src_<name> AS ${snapEx};
+3. Freeze the expected output: run the ORIGINAL query on ${L.label} once,
+     CREATE TABLE golden AS ${goldEx};
+4. Do all conversion work against these frozen tables.
+
 ACCEPTANCE — mechanical, never skipped
 A conversion is DONE only when this returns true in the duckdb CLI
 (INSTALL duck_diff FROM community; LOAD duck_diff; + the connection setup
@@ -932,8 +937,8 @@ from the recipe above):
 
     SELECT n_total = n_identical AS accepted
     FROM table_diff_summary(
-        $$ ${lq} $$,
-        $$ ${rFrom} $$,
+        'FROM golden',
+        $$ <the converted query's output> $$,
         ${argsLine});
 
 RULES
@@ -951,7 +956,7 @@ RULES
 Full workflow: https://github.com/avaitla/duck_diff/blob/main/docs/ai-assisted-migration.md`;
 
   $('goalOut').textContent =
-`/goal every section is converted to the ${R.label} dialect and, for each one, the acceptance query has been run in this session and returned true — or we hit a tolerance decision that needs my input. Stop after 40 turns.`;
+`/goal every source table the query reads is snapshotted into a local table, every section is converted to the ${R.label} dialect, and for each section the acceptance query has been run in this session and returned true — or we hit a tolerance decision that needs my input. Stop after 40 turns.`;
 
   $('srcLogo').innerHTML = logoHtml(srcSys.value);
   $('dstLogo').innerHTML = logoHtml(dstSys.value);
