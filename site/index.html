@@ -187,7 +187,10 @@ system. Choose source and destination and copy the recipe. It always has three p
 a <strong>schema diff</strong> (do the columns and types even line up?), a <strong>summary</strong>
 (one row of counts — in sync means everything is <code>n_identical</code>), and a
 <strong>drill-down</strong> (every drifted key and exactly which columns changed).
-Credentials come from environment variables — nothing sensitive lands in the SQL.</p>
+Credentials come from environment variables — nothing sensitive lands in the SQL. In
+<strong>SQL query</strong> mode, connectors with a native pass-through (Postgres, MySQL, SQL Server,
+BigQuery, Snowflake, ClickHouse) send your query to the remote system <em>in its own dialect</em> —
+no catalog introspection, and only the rows you asked for come back.</p>
 
 <div class="builder">
   <div class="sides">
@@ -353,6 +356,9 @@ const SYSTEMS = [
 { group: 'Databases', items: [
 
 { id: 'postgres', label: 'PostgreSQL', objLabel: 'Table (schema-qualified)', objDefault: 'public.orders',
+  qlabel: 'SQL query (Postgres dialect — pushed down)',
+  qph: () => "SELECT id, email, plan FROM public.customers WHERE updated_at < now() - interval '5 minutes'",
+  q: (side, sfx, qq) => `FROM postgres_query('pg_${side}', '${qq.replace(/'/g, "''")}')`,
   build: (side, sfx, obj) => ({
     exts: [CORE('postgres')],
     env: [`export PGHOST${sfx}=db.example.com`, `export PGPORT${sfx}=5432`,
@@ -361,6 +367,9 @@ const SYSTEMS = [
     from: `FROM pg_${side}.${obj}`, notes: [] }) },
 
 { id: 'mysql', label: 'MySQL / MariaDB', objLabel: 'Table', objDefault: 'orders',
+  qlabel: 'SQL query (MySQL dialect — pushed down)',
+  qph: () => 'SELECT id, status, total_cents FROM orders WHERE updated_at < NOW() - INTERVAL 5 MINUTE',
+  q: (side, sfx, qq) => `FROM mysql_query('my_${side}', '${qq.replace(/'/g, "''")}')`,
   build: (side, sfx, obj) => ({
     exts: [CORE('mysql')],
     env: [`export MYSQL_HOST${sfx}=db.example.com`, `export MYSQL_PORT${sfx}=3306`,
@@ -377,6 +386,9 @@ ATTACH '' AS my_${side} (TYPE mysql, SECRET my_secret_${side}, READ_ONLY);`,
     from: `FROM my_${side}.${obj}`, notes: [] }) },
 
 { id: 'mssql', label: 'SQL Server', objLabel: 'Table (schema-qualified)', objDefault: 'dbo.orders',
+  qlabel: 'SQL query (T-SQL — pushed down)',
+  qph: () => 'SELECT TOP 1000 id, status FROM dbo.orders WHERE updated_at < DATEADD(minute, -5, GETDATE())',
+  q: (side, sfx, qq) => `FROM mssql_scan('ms_${side}', '${qq.replace(/'/g, "''")}')`,
   build: (side, sfx, obj) => ({
     exts: [COMM('mssql')],
     env: ['# SQL Server: the mssql extension attaches by URI — edit it in the SQL below.'],
