@@ -1,0 +1,72 @@
+# Local open-source playground for the demos: vanilla Postgres, ClickHouse,
+# and two MySQL instances (a "primary" and a "replica"). The containers start
+# EMPTY — all schemas and data are loaded through DuckDB extensions by
+# docker/seed.sql (see "Local playground" in README.md).
+#
+# Host ports are offset (15432/13306/13307/18123) so the stack coexists
+# with anything already listening on the default ports; local.env matches
+# them. All credentials here are throwaway dev values, not secrets.
+
+# Explicit project name — the default would be the directory name ("demo"),
+# which is generic enough to collide with unrelated compose projects.
+name: duck-diff-demo
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: duck
+      POSTGRES_PASSWORD: duckdemo
+      POSTGRES_DB: appdb
+    ports:
+      - "15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U duck -d appdb"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mysql-primary:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: rootdemo
+      MYSQL_DATABASE: appdb
+      MYSQL_USER: duck
+      MYSQL_PASSWORD: duckdemo
+    ports:
+      - "13306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uduck -pduckdemo --silent"]
+      interval: 2s
+      timeout: 5s
+      retries: 45
+
+  mysql-replica:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: rootdemo
+      MYSQL_DATABASE: appdb
+      MYSQL_USER: duck
+      MYSQL_PASSWORD: duckdemo
+    ports:
+      - "13307:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uduck -pduckdemo --silent"]
+      interval: 2s
+      timeout: 5s
+      retries: 45
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    environment:
+      CLICKHOUSE_USER: duck
+      CLICKHOUSE_PASSWORD: duckdemo
+    ports:
+      - "18123:8123"   # HTTP interface — both the demos and docker/seed.sql use this
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8123/ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
