@@ -355,6 +355,7 @@ function pgLikeSecret(secret, alias, type, vars, sfx) {
     USER     getenv('${vars}USER${sfx}'),
     PASSWORD getenv('${vars}PASSWORD${sfx}')
 );
+-- ATTACH '': no inline connection string — the named secret supplies everything
 ATTACH '' AS ${alias} (TYPE ${type}, SECRET ${secret}, READ_ONLY);`;
 }
 
@@ -374,7 +375,8 @@ const SYSTEMS = [
     env: [`export PGHOST${sfx}=db.example.com`, `export PGPORT${sfx}=5432`,
           `export PGDATABASE${sfx}=appdb`, `export PGUSER${sfx}=readonly`, `export PGPASSWORD${sfx}=…`],
     setup: pgLikeSecret('pg_secret_' + side, 'pg_' + side, 'postgres', 'PG', sfx),
-    from: `FROM pg_${side}.${obj}`, notes: [] }) },
+    from: `FROM postgres_query('pg_${side}', 'SELECT * FROM ${obj}')`,
+    notes: ['postgres_query() pushes the inner query to Postgres verbatim — no catalog introspection, only the requested rows come back.'] }) },
 
 { id: 'mysql', label: 'MySQL / MariaDB', objLabel: 'Table', objDefault: 'orders',
   qlabel: 'SQL query (MySQL dialect — pushed down)',
@@ -392,8 +394,10 @@ const SYSTEMS = [
     USER     getenv('MYSQL_USER${sfx}'),
     PASSWORD getenv('MYSQL_PASSWORD${sfx}')
 );
+-- ATTACH '': no inline connection string — the named secret supplies everything
 ATTACH '' AS my_${side} (TYPE mysql, SECRET my_secret_${side}, READ_ONLY);`,
-    from: `FROM my_${side}.${obj}`, notes: [] }) },
+    from: `FROM mysql_query('my_${side}', 'SELECT * FROM ${obj}')`,
+    notes: ['mysql_query() pushes the inner query to MySQL verbatim — no catalog introspection, only the requested rows come back.'] }) },
 
 { id: 'mssql', label: 'SQL Server', objLabel: 'Table (schema-qualified)', objDefault: 'dbo.orders',
   qlabel: 'SQL query (T-SQL — pushed down)',
@@ -401,11 +405,21 @@ ATTACH '' AS my_${side} (TYPE mysql, SECRET my_secret_${side}, READ_ONLY);`,
   q: (side, sfx, qq) => `FROM mssql_scan('ms_${side}', '${qq.replace(/'/g, "''")}')`,
   build: (side, sfx, obj) => ({
     exts: [COMM('mssql')],
-    env: ['# SQL Server: the mssql extension attaches by URI — edit it in the SQL below.'],
-    setup: `-- EDIT ME: SQL Server connection URI (native TDS, TLS via use_encrypt).
--- Keep the real URI out of checked-in files.
-ATTACH 'mssql://user:password@sqlserver.example.com:1433?database=appdb&use_encrypt=true' AS ms_${side};`,
-    from: `FROM ms_${side}.${obj}`, notes: [] }) },
+    env: [`export MSSQL_HOST${sfx}=sqlserver.example.com`, `export MSSQL_PORT${sfx}=1433`,
+          `export MSSQL_DATABASE${sfx}=appdb`, `export MSSQL_USER${sfx}=reader`, `export MSSQL_PASSWORD${sfx}=…`],
+    setup: `CREATE SECRET ms_secret_${side} (
+    TYPE mssql,
+    HOST     getenv('MSSQL_HOST${sfx}'),
+    PORT     getenv('MSSQL_PORT${sfx}')::INTEGER,
+    DATABASE getenv('MSSQL_DATABASE${sfx}'),
+    USER     getenv('MSSQL_USER${sfx}'),
+    PASSWORD getenv('MSSQL_PASSWORD${sfx}'),
+    USE_ENCRYPT true
+);
+-- ATTACH '': no inline connection string — the named secret supplies everything
+ATTACH '' AS ms_${side} (TYPE mssql, SECRET ms_secret_${side});`,
+    from: `FROM mssql_scan('ms_${side}', 'SELECT * FROM ${obj}')`,
+    notes: ['mssql_scan() sends raw T-SQL to SQL Server — no catalog introspection, only the requested rows come back.'] }) },
 
 { id: 'sqlite', label: 'SQLite', objLabel: 'Table', objDefault: 'orders',
   build: (side, sfx, obj) => ({
@@ -513,7 +527,9 @@ CREATE MACRO clickhouse_query_${side}(q) AS TABLE
 FROM read_parquet(concat(getenv('CLICKHOUSE_URL${sfx}'),
                          '/?default_format=Parquet&query=', url_encode(q)));`,
     from: `FROM clickhouse_query_${side}('SELECT * FROM ${obj}')`,
-    notes: [`Auditing a ClickPipes/PeerDB CDC destination? Read it as ` +
+    notes: [`Works as-is with ClickHouse Cloud: set CLICKHOUSE_URL=https://<instance>.clickhouse.cloud:8443 ` +
+      `(the Cloud HTTPS port) — auth rides in the X-ClickHouse-* headers, scoped to that endpoint.`,
+      `Auditing a ClickPipes/PeerDB CDC destination? Read it as ` +
       `"SELECT … FROM db.table FINAL WHERE _peerdb_is_deleted = 0" so row versions collapse and CDC-deleted rows drop out.`],
     tz: true }) },
 
