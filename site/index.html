@@ -1084,14 +1084,28 @@ FROM table_diff_summary('FROM golden', 'FROM candidate',
 /* section 4: hand-to-Claude blocks */
 $('optPromptOut').textContent =
 `Optimize the SQL query below without changing its answer.
+(Swap in your own data, slow query, and key to use this on real work.)
 
-    <paste your slow SQL here>
+The data — a public dataset, 231k rows:
+
+    CREATE TABLE flights AS FROM read_csv(
+      'https://raw.githubusercontent.com/vega/vega-datasets/master/data/flights-3m.csv');
+
+The slow query — top-3 most-delayed flights per origin airport:
+
+    SELECT f.origin, f.date, f.destination, f.delay, count(*) AS rnk
+    FROM flights f
+    JOIN flights g ON g.origin = f.origin
+     AND (g.delay > f.delay OR (g.delay = f.delay
+          AND (g.date, g.destination) <= (f.date, f.destination)))
+    GROUP BY ALL HAVING rnk <= 3;
 
 SETUP (once)
 1. INSTALL duck_diff FROM community; LOAD duck_diff;
-2. Freeze ground truth: CREATE TABLE golden AS <the original query>;
-3. Record a baseline: run the original 2-3 times, keep the best (.timer on).
-4. Pick a unique key for the diff (synthesize a rank if the output has none).
+2. Freeze ground truth: CREATE TABLE golden AS <the slow query above>;
+3. Record a baseline: run it 2-3 times, keep the best time (.timer on).
+4. Diff key: ['origin', 'rnk'] — unique by construction here. (For your own
+   query, pick a unique key, synthesizing a rank if the output has none.)
 
 LOOP — one rewrite hypothesis at a time
 1. Read EXPLAIN ANALYZE before guessing; change ONE thing per attempt
@@ -1100,7 +1114,8 @@ LOOP — one rewrite hypothesis at a time
 2. CREATE OR REPLACE TABLE candidate AS <rewrite>; record its time.
 3. The gate:
      SELECT n_total = n_identical AS accepted
-     FROM table_diff_summary('FROM golden', 'FROM candidate', pk := <key>);
+     FROM table_diff_summary('FROM golden', 'FROM candidate',
+                             pk := ['origin', 'rnk']);
 4. Keep the rewrite only if accepted AND >10% faster; otherwise revert.
    Never keep faster-but-different. If the drift looks like float rounding,
    show me the drifted rows and the smallest numeric_tolerance that accepts
