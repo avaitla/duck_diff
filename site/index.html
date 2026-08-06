@@ -281,7 +281,9 @@ each card loads the matching recipe into the builder above, and links to a fully
 This prompt is wired to the source and destination you picked above: copy it into
 <a href="https://claude.com/claude-code">Claude Code</a> and it converts one section at a time,
 using the diff as a mechanical acceptance test it cannot rationalize around, and doesn't stop until
-the diff is clean. Expand it with your own schema and context — or use the repo's
+the diff is clean. It ends with a ready-made <code>/goal</code> one-liner, so Claude Code keeps
+driving across turns until the condition verifiably holds. Expand it with your own schema and
+context — or use the repo's
 <a href="https://github.com/avaitla/duck_diff/blob/main/.claude/skills/sql-migrate/SKILL.md"><code>sql-migrate</code> skill</a>,
 which any Claude Code session in the repo picks up automatically.</p>
 <div class="codeblock"><button class="copy" data-for="promptOut">Copy</button><pre id="promptOut"></pre></div>
@@ -886,6 +888,14 @@ RULES
    decision (rounding, timezone, collation), show the drifted rows plus the
    smallest tolerance that would accept them (numeric_tolerance /
    timestamp_precision / null_equals_empty), then wait for approval.
+
+GOAL MODE (optional — Claude Code v2.1.139+)
+Or skip rule 4 and set the stop condition once; Claude keeps working across
+turns until it verifiably holds:
+
+/goal every section is converted to the ${R.label} dialect and, for each one, the
+acceptance query above has been run in this session and returned true — or we
+hit a tolerance decision that needs my input. Stop after 40 turns.
 
 Full workflow: https://github.com/avaitla/duck_diff/blob/main/docs/ai-assisted-migration.md`;
 
