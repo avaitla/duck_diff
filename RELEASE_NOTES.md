@@ -70,6 +70,11 @@ Also included:
 
 ### Housekeeping
 
+- Functions are discoverable from `duckdb_functions()`: each of `table_diff`,
+  `table_diff_summary` and `schema_diff` carries a description, a runnable
+  example and categories, and the two relation arguments are named
+  `left` / `right` instead of `col0` / `col1`
+  ([#11](https://github.com/avaitla/duck_diff/issues/11)).
 - Upgraded the bundled DuckDB to v2.0.0 (extension-ci-tools `v2.0-cyanoptera`).
 - `duck_diff` is now installable from the DuckDB community extension
   repository: `INSTALL duck_diff FROM community;`
