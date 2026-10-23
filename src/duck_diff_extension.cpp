@@ -712,16 +712,13 @@ unique_ptr<TableRef> SchemaDiffBindReplace(ClientContext &context, TableFunction
 TableFunction MakeRelationPairFunction(const char *name, table_function_bind_replace_t bind_replace) {
 	TableFunction fun(name, vector<LogicalType>(), nullptr, nullptr);
 	fun.bind_replace = bind_replace;
-	fun.GetSignature()
-	    .AddPositionalOnly("left", LogicalType::VARCHAR)
-	    .AddPositionalOnly("right", LogicalType::VARCHAR);
+	fun.GetSignature().AddPositionalOnly("left", LogicalType::VARCHAR).AddPositionalOnly("right", LogicalType::VARCHAR);
 	return fun;
 }
 
 // Register with a FunctionDescription so the function is discoverable from
 // duckdb_functions() (description / examples / categories).
-void RegisterDescribed(ExtensionLoader &loader, TableFunction fun, const string &description,
-                       const string &example) {
+void RegisterDescribed(ExtensionLoader &loader, TableFunction fun, const string &description, const string &example) {
 	CreateTableFunctionInfo info(std::move(fun));
 	FunctionDescription desc;
 	desc.description = description;
