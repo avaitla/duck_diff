@@ -1,0 +1,50 @@
+# name: test/sql/function_metadata.test
+# description: duck_diff functions are discoverable from duckdb_functions() -- real parameter names, description, examples, categories
+# group: [sql]
+
+require duck_diff
+
+require json
+
+# positional parameters are named left / right, not col0 / col1
+query II
+SELECT function_name, parameters[1:2]
+FROM duckdb_functions()
+WHERE function_name IN ('table_diff', 'table_diff_summary', 'schema_diff')
+ORDER BY function_name;
+----
+schema_diff	[left, right]
+table_diff	[left, right]
+table_diff_summary	[left, right]
+
+# every function has a description, one example, and categories
+query IIII
+SELECT function_name, description <> '', len(examples), categories
+FROM duckdb_functions()
+WHERE function_name IN ('table_diff', 'table_diff_summary', 'schema_diff')
+ORDER BY function_name;
+----
+schema_diff	true	1	[diff, data_quality]
+table_diff	true	1	[diff, data_quality]
+table_diff_summary	true	1	[diff, data_quality]
+
+# the examples are runnable as written (each mirrors the query below)
+query III
+SELECT id, diff_status, diff_data FROM table_diff('FROM (VALUES (1, 10), (2, 20), (3, 30)) t(id, v)', 'FROM (VALUES (1, 10), (2, 25), (4, 40)) t(id, v)', pk := 'id') ORDER BY id;
+----
+1	identical	NULL
+2	different	{"v":{"left":20,"right":25}}
+3	left_only	NULL
+4	right_only	NULL
+
+query IIII
+SELECT n_identical, n_different, n_left_only, n_right_only FROM table_diff_summary('FROM (VALUES (1, 10), (2, 20), (3, 30)) t(id, v)', 'FROM (VALUES (1, 10), (2, 25), (4, 40)) t(id, v)', pk := 'id');
+----
+1	1	1	1
+
+query IIII
+SELECT * FROM schema_diff('SELECT 1::INTEGER AS id, ''a'' AS name', 'SELECT 1::BIGINT AS id, 2.5 AS score');
+----
+id	INTEGER	BIGINT	type_differs
+name	VARCHAR	NULL	left_only
+score	NULL	DECIMAL(2,1)	right_only

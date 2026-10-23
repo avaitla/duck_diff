@@ -6,6 +6,7 @@
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/function/table_function.hpp"
+#include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
 #include "duckdb/parser/tableref/subqueryref.hpp"
@@ -705,6 +706,30 @@ unique_ptr<TableRef> SchemaDiffBindReplace(ClientContext &context, TableFunction
 // Registration
 //===--------------------------------------------------------------------===//
 
+// A table function taking the two relation query strings as positional-only
+// parameters named left / right, so duckdb_functions() reports real names
+// rather than col0 / col1.
+TableFunction MakeRelationPairFunction(const char *name, table_function_bind_replace_t bind_replace) {
+	TableFunction fun(name, vector<LogicalType>(), nullptr, nullptr);
+	fun.bind_replace = bind_replace;
+	fun.GetSignature().AddPositionalOnly("left", LogicalType::VARCHAR).AddPositionalOnly("right", LogicalType::VARCHAR);
+	return fun;
+}
+
+// Register with a FunctionDescription so the function is discoverable from
+// duckdb_functions() (description / examples / categories).
+void RegisterDescribed(ExtensionLoader &loader, TableFunction fun, const string &description, const string &example) {
+	CreateTableFunctionInfo info(std::move(fun));
+	FunctionDescription desc;
+	desc.description = description;
+	desc.examples = {example};
+	desc.categories = {"diff", "data_quality"};
+	info.descriptions.push_back(std::move(desc));
+	// What the bare RegisterFunction(TableFunction) overload sets; CreateInfo defaults to ERROR_ON_CONFLICT.
+	info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
+	loader.RegisterFunction(std::move(info));
+}
+
 void AddDiffParameters(TableFunction &fun) {
 	// All optional: a NULL default reads as "not passed" (see FindParam).
 	auto &sig = fun.GetSignature();
@@ -721,20 +746,41 @@ void AddDiffParameters(TableFunction &fun) {
 }
 
 void LoadInternal(ExtensionLoader &loader) {
-	TableFunction table_diff("table_diff", {LogicalType::VARCHAR, LogicalType::VARCHAR}, nullptr, nullptr);
-	table_diff.bind_replace = TableDiffBindReplace;
+	auto table_diff = MakeRelationPairFunction("table_diff", TableDiffBindReplace);
 	AddDiffParameters(table_diff);
-	loader.RegisterFunction(table_diff);
+	RegisterDescribed(loader, std::move(table_diff),
+	                  "Diffs two relations (query strings, e.g. 'FROM t') on a primary key: one row per key with "
+	                  "diff_status (identical/different/left_only/right_only), a JSON diff_data of the changed "
+	                  "columns, and per-column <c>_left / <c>_right / <c>_diff_status.",
+	                  "SELECT id, diff_status, diff_data FROM table_diff("
+	                  "'FROM (VALUES (1, 10), (2, 20), (3, 30)) t(id, v)', "
+	                  "'FROM (VALUES (1, 10), (2, 25), (4, 40)) t(id, v)', pk := 'id') ORDER BY id;\n"
+	                  "-- 1 | identical  | NULL\n"
+	                  "-- 2 | different  | {\"v\":{\"left\":20,\"right\":25}}\n"
+	                  "-- 3 | left_only  | NULL\n"
+	                  "-- 4 | right_only | NULL");
 
-	TableFunction table_diff_summary("table_diff_summary", {LogicalType::VARCHAR, LogicalType::VARCHAR}, nullptr,
-	                                 nullptr);
-	table_diff_summary.bind_replace = TableDiffSummaryBindReplace;
+	auto table_diff_summary = MakeRelationPairFunction("table_diff_summary", TableDiffSummaryBindReplace);
 	AddDiffParameters(table_diff_summary);
-	loader.RegisterFunction(table_diff_summary);
+	RegisterDescribed(loader, std::move(table_diff_summary),
+	                  "Summarizes a table_diff of two relations in one row: per-status counts (n_identical, "
+	                  "n_different, n_left_only, n_right_only, n_total) and their percentages. Takes the same "
+	                  "parameters as table_diff.",
+	                  "SELECT n_identical, n_different, n_left_only, n_right_only FROM table_diff_summary("
+	                  "'FROM (VALUES (1, 10), (2, 20), (3, 30)) t(id, v)', "
+	                  "'FROM (VALUES (1, 10), (2, 25), (4, 40)) t(id, v)', pk := 'id');\n"
+	                  "-- 1 | 1 | 1 | 1");
 
-	TableFunction schema_diff("schema_diff", {LogicalType::VARCHAR, LogicalType::VARCHAR}, nullptr, nullptr);
-	schema_diff.bind_replace = SchemaDiffBindReplace;
-	loader.RegisterFunction(schema_diff);
+	auto schema_diff = MakeRelationPairFunction("schema_diff", SchemaDiffBindReplace);
+	RegisterDescribed(loader, std::move(schema_diff),
+	                  "Compares the column names and types of two relations (query strings) without reading any "
+	                  "rows: one row per column with left_type, right_type and status "
+	                  "(identical/type_differs/left_only/right_only).",
+	                  "SELECT * FROM schema_diff('SELECT 1::INTEGER AS id, ''a'' AS name', "
+	                  "'SELECT 1::BIGINT AS id, 2.5 AS score');\n"
+	                  "-- id    | INTEGER | BIGINT       | type_differs\n"
+	                  "-- name  | VARCHAR | NULL         | left_only\n"
+	                  "-- score | NULL    | DECIMAL(2,1) | right_only");
 }
 
 } // namespace
