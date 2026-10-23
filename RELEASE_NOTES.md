@@ -70,6 +70,6 @@ Also included:
 
 ### Housekeeping
 
-- Upgraded the bundled DuckDB to v1.5.6.
+- Upgraded the bundled DuckDB to v2.0.0 (extension-ci-tools `v2.0-cyanoptera`).
 - `duck_diff` is now installable from the DuckDB community extension
   repository: `INSTALL duck_diff FROM community;`
